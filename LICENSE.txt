@@ -1,6 +1,6 @@
 The Q Math Library is:
 
-  Copyright 2009 Andrey Zholos. All rights reserved.
+  Copyright 2010 Andrey Zholos. All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
@@ -56,11 +56,33 @@ conditions:
 
 ________________________________________________________________________________
 
-This library is linked against CLAPACK from http://netlib.org/clapack/.
+This library is linked against CLAPACK from http://netlib.org/clapack/
 See the file LICENSE_CLAPACK.txt for details.
 
-CLAPACK requires the libf2c library.
+It is also linked against libf2c, which is required for CLAPACK.
 See the file LICENSE_LIBF2C.txt for details.
+
+_______________________________________________________________________________
+
+This library is linked against CONMAX. It is distributed from
+http://netlib.org/opt/conmax.f under the following conditions:
+
+  COPYRIGHT 1996 EDWIN H. KAUFMAN JR., DAVID J. LEEMING,
+  GERALD D. TAYLOR
+  THE AUTHORS GRATEFULLY ACKNOWLEDGE THE ASSISTANCE OF
+  CENTRAL MICHIGAN UNIVERSITY, THE UNIVERSITY OF VICTORIA
+  (CANADA), AND COLORADO STATE UNIVERSITY.
+  PERMISSION TO USE, COPY, MODIFY, AND DISTRIBUTE THIS
+  SOFTWARE FOR ANY PURPOSE WITHOUT FEE IS HEREBY GRANTED,
+  PROVIDED THAT THIS ENTIRE NOTICE IS INCLUDED IN ANY
+  SOFTWARE WHICH IS OR INCLUDES A COPY OR MODIFICATION OF
+  THIS SOFTWARE AND IN ALL COPIES OF THE SUPPORTING
+  DOCUMENTATION FOR SUCH SOFTWARE.
+  THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT EXPRESS OR
+  IMPLIED WARRANTY.  IN PARTICULAR, NEITHER THE AUTHORS NOR
+  THEIR UNIVERSITIES MAKE ANY REPRESENTATION OR WARRANTY OF
+  ANY KIND CONCERNING THE MERCHANTIBILITY OF THIS SOFTWARE
+  OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
 
 _______________________________________________________________________________
 

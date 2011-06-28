@@ -4,11 +4,9 @@ Q Math Library
 
 The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
-Cephes and LAPACK libraries.
+Cephes, LAPACK and CONMAX libraries.
 
-This is version 0.1.8 of the Q Math Library.  Only Windows, 32-bit Linux and
-32-bit Darwin have been tested, but the source code and build system are
-designed to be portable.
+This is version 0.2.1 of the Q Math Library.
 
 
 2. Licensing
@@ -35,18 +33,21 @@ numerical arguments and convert them into floating-point.  Matrixes are in
 row-major order, as usual.  Complex numbers are represented as pairs of the
 real and imaginary parts.  E.g.:
 
-    q).qml.ncdf .25 .5 .75            / quartiles of a normal distribution
+    q).qml.ncdf .25 .5 .75                    / normal distribution quartiles
     -0.6744898 0 0.6744898
 
-    q).qml.mchol (1 2 1;2 5 4;1 4 6)  / Cholesky factorization
+    q).qml.mchol (1 2 1;2 5 4;1 4 6)          / Cholesky factorization
     1 2 1
     0 1 2
     0 0 1
 
-    q).qml.poly 2 -9 16 -15           / solve 2x^3-9x^2+16x-15=0
+    q).qml.poly 2 -9 16 -15                   / solve 2x^3-9x^2+16x-15=0
     2.5
     1 1.414214
     1 -1.414214
+
+    q).qml.conmin[{x*y+1};{1-(x*x)+y*y};0 0]  / minimize x(y+1) s.t. x^2+y^2<=1
+    -0.8660254 0.5
 
 It's recommended to run the test suite, test.q, to make sure that everything
 is working correctly.
@@ -150,9 +151,32 @@ the test suite before using it.
   poly[coef]      roots of a polynomial (highest-degree coefficient first, can
                     be complex)
 
+  root[f;(x0;x1)]         find root on interval (f(x0)f(x1)<1)
+  rootx[opt;f;(x0;x1)]    root[] with options (as dictionary or mixed list)
+                           `iter:  max iterations         (default: 100)
+                           `tol:   numerical tolerance    (default: ~1e-8)
+                           `full:  full output            (default: only x)
+                           `quiet: return null on failure (default: signal)
+  solve[eqs;x0]           solve nonlinear equations (given as functions)
+  solvex[opt;eqs;x0]      solve[] with options
+                           `iter:  max iterations         (default: 1000)
+                           `tol:   numerical tolerance    (default: ~1e-8)
+                           `full:  full output            (default: only x)
+                           `quiet: return null on failure (default: signal)
+                           `steps: RK steps per iteration (default: 1)
+                           `rk:    use RK steps only      (default: RK, SLP)
+                           `slp:   use SLP steps only     (default: RK, SLP)
+  line[f;base;x0]         line search for minimum from base
+  linex[opt;f;base;x0]    line[] with same options as rootx[]
+  min[f;x0]               find unconstrained minimum
+  minx[opt;f;x0]          min[] with same options as solvex[]
+  conmin[f;cons;x0]       find constrained minimum (functions cons>=0)
+  conminx[opt;f;cons;x0]  min[] with same options as solvex[], plus
+                           `lincon: assume linear cons    (default: nonlinear)
+
 
 5. Updates and feedback
 
 This library is hosted at http://althenia.net/qml.  It is programmed by
 Andrey Zholos <aaz@althenia.net>.  Comments, bug reports and testing results
-are welcome and will be appreciated.
+are welcome.

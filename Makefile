@@ -224,6 +224,8 @@ F2C_H=http://www.netlib.org/f2c/f2c.h
 CPOLY_F=http://www.netlib.org/toms/419
 RPOLY_F=http://www.netlib.org/toms/493
 CPOLY_C=http://svn.r-project.org/R/tags/R-2-9-2/src/appl/cpoly.c
+#   conmax
+CONMAX_F=http://www.netlib.org/opt/conmax.f
 #   q stuff
 Q_DIR=http://kx.com/q
 K_H=$(Q_DIR)/c/c/k.h
@@ -287,6 +289,9 @@ download/rpoly.f:
 download/cpoly.c:
 	mkdir -p download && wget -O '$@' '$(CPOLY_C)'
 
+download/conmax.f:
+	mkdir -p download && wget -O '$@' '$(CONMAX_F)'
+
 
 # Build FDLIBM
 fdlibm/.extracted: download/fdlibm-src.zip
@@ -319,7 +324,7 @@ ifeq "$(BUILD)" "gpl"
 	mkdir -p cephes && tar xzf '$<' -C cephes
 	mv -f cephes/LabPlot-*/cephes/* cephes/
 	mkdir -p cephes/cprob && tar xzf download/cprob.tgz -C cephes/cprob
-	mv -f cephes/cprob/{bdtr,kolmogorov}.c cephes/
+	mv -f cephes/cprob/bdtr.c cephes/cprob/kolmogorov.c cephes/
 	touch '$@'
 else
   ifeq "$(BUILD)" "bsd"
@@ -367,8 +372,9 @@ cephes/.patched: cephes/.extracted
 	    sed -i.tmp -e 's/extern  *int  *sgngam;//' cephes/cmath.h; fi
 	if test -e cephes/simq.c; then \
 	    sed -i.tmp -e 's/printf([^)]*) *;//' cephes/simq.c; fi
-	rm -f cephes/{floor,log,atan,pow,exp,lmdif,mtherr,mod2pi,dtestvec}.c
-	rm -f cephes/{beta,jv}.c
+	rm -f cephes/floor.c cephes/log.c cephes/atan.c cephes/pow.c
+	rm -f cephes/exp.c cephes/lmdif.c cephes/mtherr.c cephes/mod2pi.c
+	rm -f cephes/dtestvec.c cephes/beta.c cephes/jv.c
     ifeq "$(PLATFORM)" "w32"
 	rm -f cephes/setprec.c
     endif
@@ -439,7 +445,8 @@ else
 
     clapack/.patched: clapack/.extracted
 	# thread-safety fix:
-	sed -i.tmp '/equiv_/s/static//g' clapack/SRC/{s,d}laln2.c
+	sed -i.tmp '/equiv_/s/static//g' \
+	    clapack/SRC/slaln2.c clapack/SRC/dlaln2.c
 	
 	{ cat clapack/make.inc.example;  echo 'PLAT=_$(PLATFORM)'; \
 	    echo 'CC=$(CC) -DNO_BLAS_WRAP'; echo 'CFLAGS=$(CFLAGS)'; \
@@ -477,7 +484,8 @@ else
     clapack/.built: clapack/.patched
 	cd clapack/F2CLIBS/libf2c && make hadd
 	cd clapack && make f2clib
-	rm -f clapack/{BLAS/,}SRC/{f2c,blaswrap}.h
+	rm -f clapack/SRC/f2c.h clapack/SRC/blaswrap.h
+	rm -f clapack/BLAS/SRC/f2c.h clapack/BLAS/SRC/blaswrap.h
 	cp -f clapack/INCLUDE/f2c.h clapack/BLAS/SRC
 	cp -f clapack/INCLUDE/f2c.h clapack/SRC
 	cp -f clapack/INCLUDE/blaswrap.h clapack/BLAS/SRC
@@ -580,7 +588,7 @@ else
 	    -e 's/$$/struct Global global,*global_=\&global;/;}' \
 	    -e 's/^\(#define global_1 \)\(global_\)/\1(*\2)/;s/,void//' \
 	    -e '/\/\* Main program alias/d' \
-	    -e '/int MAIN__(/,/} \/\* MAIN__ /d' '$<' > '$@'
+	    -e '/int MAIN__(/,/} \/\* MAIN__ /d' '$<' >'$@'
 
     cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c cpoly/rpoly.c include/f2c.h
 	cd cpoly && $(call cc,cpoly.c rpoly.c,-I../include -DMSDOS)
@@ -592,8 +600,46 @@ else
 endif
 
 
+# Build conmax
+conmax/conmax.orig.f: download/conmax.f
+	mkdir -p conmax && cp -f '$<' '$@'
+
+conmax/conmax.in.f: conmax/conmax.orig.f
+	sed -e '/^C/d' \
+	    -e 's/PTTBL(IPTB,INDM)/PTTBL(0:0,0:0)/g;s/IPTB,//g;s/INDM,//g' \
+	    -e '/NE MULLER(/{h;s/(.*/(LIMMUL,NSRCH,/p;g;s/.*(/     */;}' \
+	    -e '/LL MULLER(/{h;s/(.*/(5,     NSRCH,/p;g;s/.*(/     */;}' \
+	    -e '/NE SEARSL(/{h;s/(.*/(INITLM,NADD,LIMS1,/p;g;s/.*(/     */;}' \
+	    -e '/LL SEARSL(/{h;s/(.*/(6,     4,   LIMS1,/p;g;s/.*(/     */;}' \
+	    -e '/^ *LIMMUL=5 *$$/d;/^ *INITLM=6 *$$/d;/^ *NADD=4 *$$/d' \
+	    '$<' >'$@'
+
+conmax/conmax.in.P conmax/conmax.in.c: conmax/conmax.in.f f2c/f2c$(EXEEXT)
+	cd conmax && ../f2c/f2c$(EXEEXT) -P -a conmax.in.f
+
+conmax/conmax.h: %.h: %.in.P
+	sed -e 's/doublereal *\* *pttbl/void *pttbl/g' '$<' >'$@'
+
+conmax/conmax.c: %.c: %.in.c
+	sed -e '/int MAIN__(/,/} \/\* MAIN__ /d' \
+	    -e '/^ *\(\/\*[^*]*\*\/\)* *int fnset_(/,/} \/\* fnset_ /d' \
+	    -e '/extern *\(\/\*[^*]*\*\/\)* *int /,/;/d' \
+	    -e 's/doublereal *\* *pttbl/void *pttbl/g' \
+	    -e '/#include "f2c\.h"/{p;s/f2c/conmax/;}' '$<' >'$@'
+
+conmax/conmax.$(LIBEXT): conmax/conmax.c conmax/conmax.h include/f2c.h
+	cd conmax && $(call cc,conmax.c,-I../include -DMSDOS)
+	cd conmax && $(call ar,conmax,conmax.$(OBJEXT))
+
+include/conmax.h: conmax/conmax.h
+	mkdir -p include && cp -f '$<' '$@'
+
+lib/conmax.$(LIBEXT): conmax/conmax.$(LIBEXT)
+	mkdir -p lib && cp -f '$<' '$@'
+
+
 # Build QML
-VERSION=0.1.8
+VERSION=0.2.1
 CONFIG=QML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
     CONFIG+= QML_R_POLY
@@ -604,7 +650,7 @@ else
 endif
 
 SOURCES=qml.c include/fdlibm.h include/k.h include/f2c.h include/clapack.h
-SOURCES+= include/config.h
+SOURCES+= include/conmax.h include/config.h
 LIBS=
 ifeq "$(PLATFORMCLASS)" "w"
     CONFIG+= QML_DLLEXPORT
@@ -613,6 +659,7 @@ endif
 ifneq "$(BUILD)" "bsd"
     LIBS+= lib/cpoly.$(LIBEXT)
 endif
+LIBS+=lib/conmax.$(LIBEXT)
 LIBS+=lib/cephes.$(LIBEXT) lib/fdlibm.$(LIBEXT)
 LIBS+=lib/clapack.$(LIBEXT) lib/blas.$(LIBEXT)
 LIBS+=lib/f2c.$(LIBEXT) lib/fdlibm.$(LIBEXT)
@@ -691,7 +738,7 @@ dist:
 
 # Clean up
 cleanpart:
-	rm -rf cephes fdlibm f2c cpoly qlib include lib build
+	rm -rf cephes fdlibm f2c cpoly conmax qlib include lib build
 
 clean: cleanpart
 	rm -rf clapack

@@ -5,14 +5,17 @@
         {x[;(-1+count x 1)^first where{count inv`$":",x}each -1_x 1]}
             {(`$x;x,\:$[.z.o like"w*";".dll";".so"])}
                 ("./";"./",string[.z.o],"/";""),\:"qml"]each
-        {(x 0;x 1;"qml_",string x 1)}each raze flip each flip(1 2 3;(
+        {(x 0;x 1;"qml_",string x 1)}each raze flip each flip(1 2 3 4;(
             `sin`cos`tan`asin`acos`atan`sinh`cosh`tanh`asinh`acosh`atanh,
                 `exp`expm1`log`log10`logb`log1p`sqrt`cbrt`floor`ceil`fabs,
                 `erf`erfc`lgamma`gamma`j0`j1`y0`y1`ncdf`nicdf`kcdf`kicdf,
                 `mdet`minv`mevu`mchol`mqr`mqrp`mlup`msvd`poly`const;
             `atan2`pow`hypot`fmod`beta`pgammar`pgammarc`ipgammarc,
-                `c2cdf`c2icdf`stcdf`sticdf`pscdf`psicdf`smcdf`smicdf;
-            `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf`bncdf`bnicdf));
+                `c2cdf`c2icdf`stcdf`sticdf`pscdf`psicdf`smcdf`smicdf,
+                `solve`min`root;
+            `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf`bncdf`bnicdf,
+                `solvex`minx`rootx`conmin`line;
+            `conminx`linex));
 
 version:const 0;pi:const 1;e:const 2;eps:const 3;
 pgamma:{gamma[x]*pgammar[x;y]};

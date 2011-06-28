@@ -20,6 +20,7 @@
 #undef large
 #include <f2c.h>
 #include <clapack.h>
+#include <conmax.h>
 
 #include <k.h>
 
@@ -53,11 +54,20 @@ Z K1(mi1) {
     R ki(mi1i(x));
 }
 
+// Return 1 if argument can be converted to I atom or vector
+ZI mip(K x) {
+    if (xt==0) {
+        DO(xn, U(mi1p(xK[i])))
+        R 1;
+    } else
+        R mi1p(x) || xt==KB || xt>=KG && xt<=KI;
+}
+
 // Make new I atom or vector out of B, G, H or I argument
 Z K1(mi) {
     K n;
+    U(mip(x))
     P(xt<0, mi1(x));
-    U(xt>=KG && xt<=KI || xt==KB || xt==0)
     n = ktn(KI, xn);
     SW(xt) {
         CS(KI, memcpy(kI(n), xI, xn*sizeof(I)))
@@ -65,14 +75,14 @@ Z K1(mi) {
             xH[i]==wh ? wi : xH[i]==-wh ? -wi : xH[i]))
         case KB:
         CS(KG, DO(xn, kI(n)[i] = xG[i]))
-        CS(0, DO(xn, if (!mi1p(xK[i])) { r0(n); R 0; } kI(n)[i] = mi1i(xK[i])))
+        CS(0, DO(xn, kI(n)[i] = mi1i(xK[i])))
     }
     R n;
 }
 
 // Return 1 if argument can be converted to F atom
 ZI mf1p(K x) {
-    R xt==-KB || xt<=-KG && xt >= -KF;
+    R xt==-KB || xt>=-KF && xt<=-KG;
 }
 
 // Return F value for argument
@@ -95,11 +105,20 @@ Z K1(mf1) {
     R kf(mf1f(x));
 }
 
+// Return 1 if argument can be converted to F atom or vector
+ZI mfp(K x) {
+    if (xt==0) {
+        DO(xn, U(mf1p(xK[i])))
+        R 1;
+    } else
+        R mf1p(x) || xt==KB || xt>=KG && xt<=KF;
+}
+
 // Make new F atom or vector out of B, G, H, I, J, E or F argument
 Z K1(mf) {
     K f;
+    U(mfp(x))
     P(xt<0, mf1(x));
-    U(xt>=KG && xt<=KF || xt==KB || xt==0)
     f = ktn(KF, xn);
     SW(xt) {
         CS(KF, memcpy(kF(f), xF, xn*sizeof(F)))
@@ -112,7 +131,7 @@ Z K1(mf) {
             xH[i]==wh ? wf : xH[i]==-wh ? -wf : xH[i]))
         case KB:
         CS(KG, DO(xn, kF(f)[i] = xG[i]))
-        CS(0, DO(xn, if (!mf1p(xK[i])) { r0(f); R 0; } kF(f)[i] = mf1f(xK[i])))
+        CS(0, DO(xn, kF(f)[i] = mf1f(xK[i])))
     }
     R f;
 }
@@ -122,7 +141,7 @@ Z K1(mf) {
 #define WRAPnf(ffn,ff) \
 K QML_EXPORT qml_##ffn(K u) { \
     K x = mf(u); \
-    P(x==0, krr(ss("type"))); \
+    P(x==0, krr(ss("type"))) \
     SW(xt) { \
         CS(-KF, xf = ff(xf)) \
         CS(KF, DO(xn, xF[i] = ff(xF[i]))) \
@@ -720,7 +739,7 @@ K QML_EXPORT qml_poly(K x) {
         d = kF(c)[0];
     if (n==0)
         j = kF(c)[0]==0 && (!complex || kF(c)[n+1]==0);
-    else if (d == 0)
+    else if (d==0)
         j = 1;
     else {
         lwork = -1;
@@ -789,6 +808,556 @@ K QML_EXPORT qml_poly(K x) {
 }
 
 
+// Options processing
+struct opt {
+    S s;
+    I t;
+};
+
+union optv {
+    I i; /* first member */
+    F f;
+};
+
+ZI mopt_find(const S s, const struct opt* opt) {
+    I k;
+    for (k=0; opt[k].s!=0; k++)
+        P(!strcmp(s, opt[k].s), k)
+    R k;
+}
+
+// Fills in an optv array; returns 1 on success
+ZI mopt(K x, const struct opt* opt, union optv* v) {
+    I j, k;
+    switch (xt) {
+    case 0:
+        for (j=0; j<xn; j++) {
+            U(xK[j]->t==-KS)
+            if (*xK[j]->s) {
+                k = mopt_find(xK[j]->s, opt); U(opt[k].s!=0)
+                SW(opt[k].t) {
+                    CS(0, v[k].i=1)
+                    CS(-KI, ++j; U(j<xn && mi1p(xK[j])) v[k].i=mi1i(xK[j]))
+                    CS(-KF, ++j; U(j<xn && mf1p(xK[j])) v[k].f=mf1f(xK[j]))
+                }
+            }
+        }
+        break;
+    case -KS:
+        if (*xs) {
+            k = mopt_find(xs, opt); U(opt[k].s!=0 && opt[k].t==0)
+            v[k].i = 1;
+        }
+        break;
+    case KS:
+        for (j=0; j<xn; j++)
+            if (*xS[j]) {
+                k = mopt_find(xS[j], opt); U(opt[k].s!=0 && opt[k].t==0)
+                v[k].i = 1;
+            }
+        break;
+    case XD:
+        U(xx->t==KS || xx->t==0)
+        for (j=0; j<xx->n; j++) {
+            S s;
+            U(xx->t==KS || kK(xx)[j]->t==-KS)
+            s = xx->t==KS ? kS(xx)[j] : kK(xx)[j]->s;
+            if (*s) {
+                k = mopt_find(s, opt);
+                U(opt[k].s!=0)
+                if (xy->t==0) {
+                    U(j<xy->n)
+                    SW(opt[k].t) {
+                        case 0:
+                        CS(-KI, U(mi1p(kK(xy)[j])) v[k].i=mi1i(kK(xy)[j]))
+                        CS(-KF, U(mf1p(kK(xy)[j])) v[k].f=mf1f(kK(xy)[j]))
+                    }
+                } else {
+                    K r;
+                    SW(opt[k].t) {
+                        case 0:
+                        CS(-KI, U(mip(xy) && xy->t>=0 && j<xy->n)
+                                r=mi(xy); v[k].i=kI(r)[j]; r0(r))
+                        CS(-KF, U(mfp(xy) && xy->t>=0 && j<xy->n)
+                                r=mf(xy); v[k].f=kF(r)[j]; r0(r))
+                    }
+                }
+            }
+        }
+    }
+    R 1;
+}
+
+
+// Nonlinear optimization
+doublereal d1mach_3, d1mach_3_sqrt;
+
+doublereal d1mach_(integer *i) {
+    R d1mach_3;
+}
+
+struct fnset_info {
+    K fun, con, start;
+    I contyp;
+    I neg, sig;
+    K sigval;
+    doublereal base;
+};
+
+Z doublereal* fnset_arg(K x, doublereal* param, K* a) {
+    K y;
+    if (xt==0) {
+        y = ktn(0, xn);
+        DO(xn, param=fnset_arg(xK[i], param, &kK(y)[i]))
+    } else if (xt>0) {
+        y = ktn(KF, xn);
+        DO(xn, kF(y)[i]=param[i])
+        param += xn;
+    } else
+        y = kf(*param++);
+    *a = y;
+    R param;
+}
+
+ZF fnset_call(struct fnset_info* info, K f, I neg, doublereal* param) {
+    K a, x;
+    F v;
+    P(info->sig, 0)
+
+    if (info->start==0 && info->con!=0) /* line */
+        a = knk(1, kf(info->neg ? info->base-*param : info->base+*param));
+    else if (info->start==0 || info->start->t<0) /* root or scalar param */
+        a = knk(1, kf(*param));
+    else
+        fnset_arg(info->start, param, &a);
+
+    x = dot(f, a); r0(a);
+    if (x!=0 && mf1p(x))
+        { v = mf1f(x); r0(x); R neg ? -v : v; }
+
+    /* function didn't return a float as we'd hoped */
+    info->sig = 1;
+    if (x==0 || x->t==-128)
+        info->sigval = x;
+    else
+        { S s = x->t>=100 ? "rank" : "type"; r0(x); info->sigval = krr(ss(s)); }
+    R 0;
+}
+
+int fnset_(integer *nparm, integer *numgr, void *pttbl, doublereal *param,
+           integer *ipt, integer *indfn, integer *icntyp, doublereal *confun)
+{
+    I j, neg;
+    F v;
+    K f;
+    struct fnset_info* info = pttbl;
+
+    icntyp += *ipt - 1;
+    confun += *ipt - 1;
+
+    if (info->con==0) { /* root or solve */
+        f = info->fun->t==0 ? kK(info->fun)[*ipt-1] : info->fun;
+        neg = info->neg;
+        *icntyp = 2;
+    } else /* line, min or conmin */
+        if (*ipt==1) { /* objective function */
+            f = info->fun;
+            neg = 0; *icntyp = 1;
+        } else { /* constraints */
+            f = info->con->t==0 ? kK(info->con)[*ipt-2] : info->con;
+            neg = 1; *icntyp = info->contyp;
+        }
+
+    *confun = v = fnset_call(info, f, neg, param);
+    if (*indfn) {
+        I m = *numgr, n = *nparm;
+        if (*icntyp==-1) /* linear function */
+            for (j=0; j<n; j++) {
+                F p = param[j];
+                param[j] = p + 1;
+                *(confun+=m) = fnset_call(info, f, neg, param) - v;
+                param[j] = p;
+            }
+        else /* nonlinear function */
+            for (j=0; j<n; j++) {
+                F p = param[j], h = d1mach_3_sqrt, p1, p2, v1, v2;
+                param[j] = p1 = p + h; v1 = fnset_call(info, f, neg, param);
+                param[j] = p2 = p - h; v2 = fnset_call(info, f, neg, param);
+                *(confun+=m) = (v1-v2) / (p1-p2);
+                param[j] = p;
+            }
+    }
+
+    if (info->sig)
+        *icntyp = 0;
+    R 0;
+}
+
+ZI solvemin_count(K x) {
+    if (xt==0) {
+        I j, c, n = 0;
+        for (j=0; j<xn; j++) {
+            c = solvemin_count(xK[j]); P(c<0, c)
+            n += c; P(n>1000000, -2)
+        }
+        R n;
+    } else {
+        P(!mfp(x), -1)
+        R xt<0 ? 1 : xn>1000000 ? -2 : xn;
+    }
+}
+
+Z doublereal* solvemin_param(K x, doublereal* param) {
+    if (xt==0)
+        DO(xn, param=solvemin_param(xK[i], param))
+    else if (xt>0) {
+        x = mf(x); /* type was checked by solvemin_count */
+        DO(xn, param[i]=xF[i])
+        param += xn;
+        r0(x);
+    } else
+        *param++ = mf1f(x);
+    R param;
+}
+
+Z struct k0 con_dummy; /* empty con used only by min */
+
+ZK solvemin(K fun, K con, K start, I maxiter, F tolcon, I steps, I slp, I rk,
+            I lincon, I full, I quiet)
+{
+    integer ioptn, nparm, numgr, itlim, ifun, liwrk, lwrk, iter;
+    doublereal *param, *error;
+    K iwork, work, x, y;
+    S sig;
+    struct fnset_info info;
+
+    nparm = solvemin_count(start);
+    P(nparm<0, krr(ss(nparm==-2 ? "limit" : "type")))
+    P(!(fun->t>=100 || con==0 && fun->t==0), krr(ss("type")))
+    P(!(con==0 || con->t>=100 || con->t==0), krr(ss("type")))
+    P(fun->t==0 && fun->n>1000000, krr(ss("limit")))
+    P(con!=0 && con->t==0 && con->n>1000000, krr(ss("limit")))
+    P(slp && (rk || steps>0), krr(ss("opt")))
+
+    if (con==0) { /* solve */
+        numgr = fun->t==0 ? fun->n : 1;
+        ifun = numgr;
+    } else { /* min or conmin */
+        numgr = 1 + (con->t==0 ? con->n : 1);
+        ifun = 1;
+    }
+
+    P(2*nparm+4*numgr>2000000000/nparm, krr(ss("limit")))
+    liwrk = 7*numgr + 7*nparm + 3;
+    lwrk = 2*nparm*nparm + 4*numgr*nparm + 11*numgr + 27*nparm + 13;
+    iwork = ktn(QML_KLONG, liwrk);
+    work = ktn(KF, lwrk + ifun + (numgr+3) + nparm);
+
+    error = kF(work) + lwrk + ifun;
+    param = error + (numgr+3);
+    solvemin_param(start, param);
+
+    ioptn = 200;
+    itlim = maxiter>=0 ? maxiter : 0;
+    if (!(tolcon>=0))
+        tolcon = d1mach_3_sqrt;
+    kF(work)[1] = tolcon;
+    if (steps>0) {
+        QML_kLONG(iwork)[1] = steps;
+        ioptn += 100;
+    }
+    ioptn += slp ? 1000 : rk ? 2000 : 0;
+    DO(ifun, (kF(work)+lwrk)[i]=0)
+
+    info.fun = fun;
+    info.con = con;
+    info.start = start;
+    info.contyp = lincon ? -1 : -2;
+    info.neg = 0;
+    info.sig = 0;
+
+    conmax_(&ioptn, &nparm, &numgr, &itlim, kF(work)+lwrk, &ifun, &info,
+            QML_kLONG(iwork), &liwrk, kF(work), &lwrk, &iter,
+            param, kF(work)+lwrk+ifun);
+    r0(iwork);
+    if (info.sig)
+        { r0(work); R info.sigval; }
+
+    if (iter>=maxiter)
+        sig = "iter";
+    else if (iter<0 || con==0 && !(param[-3]>=-tolcon && param[-3]<=tolcon))
+        sig = "feas";
+    else {
+        I j;
+        sig = NULL;
+        for (j=0; j<nparm; j++)
+            if (isnan(param[j]))
+                { sig="nan"; break; }
+    }
+    if (sig && !quiet)
+        { r0(work); R krr(ss(sig)); }
+
+    if (sig) {
+        if (full)
+            fnset_arg(start, param, &y);
+        DO(nparm, param[i]=nf)
+    }
+    fnset_arg(start, param, &x);
+    if (full) {
+        /*          solve       min        conmin */
+        /* normal: `x`iter      `x`f`iter  `x`f`cons`iter */
+        /* error:  `x`last`err  `x`last`f  `x`last`f`cons */
+        /*         `iter`sig    `iter`sig  `err`iter`sig */
+        I j = 2 + (sig ? 2 + (con!=&con_dummy) : 0) +
+               (con!=0 ? 1 + (con!=&con_dummy) : 0);
+        K k = ktn(KS, j), v = ktn(0, j);
+        if (sig) kS(k)[--j] = ss("sig"),  kK(v)[j] = ks(ss(sig));
+        /*    */ kS(k)[--j] = ss("iter"), kK(v)[j] = ki(iter>=0 ? (I)iter : 0);
+        if (sig && con!=&con_dummy) {
+            F err = param[con==0 ? -3 : lincon ? -2 : -1];
+            /**/ kS(k)[--j] = ss("err"),  kK(v)[j] = kf(err);
+        }
+        if (con!=0) {
+            if (con!=&con_dummy) {
+                 F e; K cons = ktn(KF, numgr-1);
+                 DO(numgr-1, e = error[i+1];
+                             kF(cons)[i] = e>=-tolcon && e<=tolcon ? 0 : -e)
+                 kS(k)[--j] = ss("cons"), kK(v)[j] = cons;
+            }
+            /**/ kS(k)[--j] = ss("f"),    kK(v)[j] = kf(param[-3]);
+        }
+        if (sig) kS(k)[--j] = ss("last"), kK(v)[j] = y;
+        /*    */ kS(k)[--j] = ss("x"),    kK(v)[j] = x;
+        x = xD(k, v);
+    }
+    r0(work);
+    R x;
+}
+
+ZK root(K fun, K x, I maxiter, doublereal tolcon, I full, I quiet) {
+    S sig;
+    I sigsign;
+    integer iter, nsrch, ioptn, nparm, numgr, ifun, iphse, iwork[17],
+            liwrk, lwrk;
+    doublereal dvec, cfun, zwork, work[6], parwrk, err1[4], p1, p2, f1, f2;
+    struct fnset_info info;
+
+    P(fun->t<100, krr(ss("type")))
+    x = mf(x); P(x==0, krr(ss("type")))
+    if (xt<0 || xn!=2)
+        { r0(x); R krr(ss("length")); }
+    p1 = xF[0];
+    p2 = xF[1];
+    r0(x);
+
+    info.fun = fun;
+    info.con = NULL; /* root/solve flag */
+    info.start = NULL; /* root/line flag */
+    info.contyp = -2;
+    info.neg = 0;
+    info.sig = 0;
+
+    if (p1>p2)
+        { f2 = p1; p1 = p2; p2 = f2; }
+    f1 = fnset_call(&info, fun, 0, &p1);
+    f2 = fnset_call(&info, fun, 0, &p2);
+    P(info.sig, info.sigval)
+
+    if (!(tolcon>=0))
+        tolcon = d1mach_3_sqrt;
+    if (f1<-tolcon && f2>tolcon)
+        { f1 = -f1; f2 = -f2; info.neg = 1; }
+    sigsign = !(f1>tolcon && f2<-tolcon);
+
+    iter = maxiter>=0 ? maxiter : 0;
+    ifun = dvec = numgr = nparm = 1;
+    zwork = cfun = iphse = ioptn = 0;
+    liwrk = 17;
+    lwrk = 6;
+    iwork[15] = -2;
+
+    muller_(&iter, &nsrch, &ioptn, &nparm, &numgr, &dvec, &cfun, &ifun,
+            &info, &zwork, &tolcon, &iphse, iwork, &liwrk,
+            work, &lwrk, &parwrk, err1, &p1, &f1, &p2, &f2);
+    if (info.sig)
+        R info.sigval;
+
+    sig = nsrch>=maxiter ? "iter" :
+          !(f2>=-tolcon && f2<=tolcon) ? "feas" :
+          isnan(p2) ? "nan" : NULL;
+    if (sig && sigsign)
+        sig = "sign";
+    P(sig && !quiet, krr(ss(sig)))
+
+    x = sig ? kf(nf) : kf(p2);
+    if (full) {
+        /* normal: `x`iter */
+        /* error:  `x`last`err`iter`sig */
+        I j = 2 + (sig ? 3 : 0);
+        K k = ktn(KS, j), v = ktn(0, j);
+        if (sig) kS(k)[--j] = ss("sig"),  kK(v)[j] = ks(ss(sig));
+        /*    */ kS(k)[--j] = ss("iter"), kK(v)[j] = ki(nsrch);
+        if (sig) kS(k)[--j] = ss("err"),  kK(v)[j] = kf(fabs(f2));
+        if (sig) kS(k)[--j] = ss("last"), kK(v)[j] = kf(p2);
+        /*    */ kS(k)[--j] = ss("x"),    kK(v)[j] = x;
+        x = xD(k, v);
+    }
+    R x;
+}
+
+ZK line(K fun, K base, K x, I maxiter, doublereal tolcon, I full, I quiet) {
+    S sig;
+    integer initlm, nadd, lims1, ioptn, numgr, nparm, ifun, mact, iact, iphse,
+            itypm1, itypm2, iwork[17], liwrk, lwrk, nsrch;
+    doublereal prjlim, tol1, cx[2], cfun, param, error[4], rchdwn, unit, rchin,
+               work[42], err1[4], parprj, projct, emin, emin1, parser;
+    struct fnset_info info;
+
+    P(fun->t<100, krr(ss("type")))
+    P(!mf1p(base) || !mf1p(x), krr(ss("type")))
+
+    info.fun = fun;
+    info.con = fun; /* min/line flag */
+    info.start = NULL; /* root/line flag */
+    info.neg = 0;
+    info.sig = 0;
+    info.base = mf1f(base);
+
+    projct = mf1f(x) - info.base;
+    if (!(projct>0))
+        { projct = -projct; info.neg = 1; }
+
+    if (!(tolcon>=0))
+        tolcon = d1mach_3_sqrt;
+    prjlim = wf;
+    tol1 = 100 * d1mach_3;
+    if (tol1>tolcon)
+        tol1=tolcon;
+    lims1 = nadd = initlm = maxiter>=0 ? maxiter : 0;
+    unit = iact = mact = ifun = nparm = numgr = 1;
+    param = cfun = itypm2 = itypm1 = iphse = ioptn = 0;
+    rchin = rchdwn = 2;
+    liwrk = 17;
+    lwrk = 42;
+    cx[0] = 1;
+    iwork[6] = 1;
+
+    searsl_(&initlm, &nadd, &lims1, &ioptn, &numgr, &nparm, &prjlim, &tol1, cx,
+            &cfun, &ifun, &info, &param, error, &rchdwn, &mact, &iact, &iphse,
+            &unit, &tolcon, &rchin, &itypm1, &itypm2, iwork, &liwrk, work,
+            &lwrk, err1, &parprj, &projct, &emin, &emin1, &parser, &nsrch);
+    if (info.sig)
+        R info.sigval;
+
+    sig = nsrch>=maxiter || nsrch>=lims1 ? "iter" :
+          isnan(projct) ? "nan" : NULL;
+    P(sig && !quiet, krr(ss(sig)));
+
+    projct = info.neg ? info.base-projct : info.base+projct;
+    x = sig ? kf(nf) : kf(projct);
+    if (full) {
+        /* normal: `x`f`iter */
+        /* error:  `x`last`f`iter`sig */
+        I j = 3 + (sig ? 2 : 0);
+        K k = ktn(KS, j), v = ktn(0, j);
+        if (sig) kS(k)[--j] = ss("sig"),  kK(v)[j] = ks(ss(sig));
+        /*    */ kS(k)[--j] = ss("iter"), kK(v)[j] = ki(nsrch);
+        /*    */ kS(k)[--j] = ss("f"),    kK(v)[j] = kf(emin);
+        if (sig) kS(k)[--j] = ss("last"), kK(v)[j] = kf(projct);
+        /*    */ kS(k)[--j] = ss("x"),    kK(v)[j] = x;
+        x = xD(k, v);
+    }
+    R x;
+}
+
+Z const struct opt solve_opt[] = {
+    { "iter",   -KI },
+    { "tol",    -KF },
+    { "steps",  -KI },
+    { "slp",      0 },
+    { "rk",       0 },
+    { "full",     0 },
+    { "quiet",    0 },
+    { NULL }
+};
+
+K QML_EXPORT qml_solvex(K opts, K x, K y) {
+    union optv v[] =
+        { { 1000 }, { .f = -1 }, { -1 }, { 0 }, { 0 }, { 0 }, { 0 } };
+    P(opts!=0 && !mopt(opts, solve_opt, v), krr(ss("opt")))
+    R solvemin(x, NULL, y,
+               v[0].i, v[1].f, v[2].i, v[3].i, v[4].i, 0, v[5].i, v[6].i);
+}
+
+K QML_EXPORT qml_solve(K x, K y) {
+    R qml_solvex(NULL, x, y);
+}
+
+K QML_EXPORT qml_minx(K opts, K x, K y) {
+    union optv v[] =
+        { { 1000 }, { .f = -1 }, { -1 }, { 0 }, { 0 }, { 0 }, { 0 } };
+    P(opts!=0 && !mopt(opts, solve_opt, v), krr(ss("opt")))
+    R solvemin(x, &con_dummy, y,
+               v[0].i, v[1].f, v[2].i, v[3].i, v[4].i, 0, v[5].i, v[6].i);
+}
+
+K QML_EXPORT qml_min(K x, K y) {
+    R qml_minx(NULL, x, y);
+}
+
+Z const struct opt conmin_opt[] = {
+    { "iter",   -KI },
+    { "tol",    -KF },
+    { "steps",  -KI },
+    { "slp",      0 },
+    { "rk",       0 },
+    { "lincon",   0 },
+    { "full",     0 },
+    { "quiet",    0 },
+    { NULL }
+};
+
+K QML_EXPORT qml_conminx(K opts, K x, K y, K z) {
+    union optv v[] =
+        { { 1000 }, { .f = -1 }, { -1 }, { 0 }, { 0 }, { 0 }, { 0 }, { 0 } };
+    P(opts!=0 && !mopt(opts, conmin_opt, v), krr(ss("opt")))
+    R solvemin(x, y, z,
+               v[0].i, v[1].f, v[2].i, v[3].i, v[4].i, v[5].i, v[6].i, v[7].i);
+}
+
+K QML_EXPORT qml_conmin(K x, K y, K z) {
+    R qml_conminx(NULL, x, y, z);
+}
+
+Z const struct opt rootline_opt[] = {
+    { "iter", -KI },
+    { "tol",  -KF },
+    { "full",   0 },
+    { "quiet",  0 },
+    { NULL }
+};
+
+K QML_EXPORT qml_rootx(K opts, K x, K y) {
+    union optv v[] = { { 100 }, { .f = -1 }, { 0 }, { 0 } };
+    P(opts!=0 && !mopt(opts, rootline_opt, v), krr(ss("opt")))
+    R root(x, y, v[0].i, v[1].f, v[2].i, v[3].i );
+}
+
+K QML_EXPORT qml_root(K x, K y) {
+    R qml_rootx(NULL, x, y);
+}
+
+K QML_EXPORT qml_linex(K opts, K x, K y, K z) {
+    union optv v[] = { { 100 }, { .f = -1 }, { 0 }, { 0 } };
+    P(opts!=0 && !mopt(opts, rootline_opt, v), krr(ss("opt")))
+    R line(x, y, z, v[0].i, v[1].f, v[2].i, v[3].i);
+}
+
+K QML_EXPORT qml_line(K x, K y, K z) {
+    R qml_linex(NULL, x, y, z);
+}
+
+
 // Initialization
 static int initialized = 0;
 
@@ -798,7 +1367,10 @@ __attribute__ ((constructor))
 ZV initialize() {
     // these functions are only thread-unsafe on their first invocation
     slamch_("E");
-    dlamch_("E");
+    d1mach_3 = dlamch_("E");
+    d1mach_3_sqrt = sqrt(d1mach_3);
+    con_dummy.t = 0;
+    con_dummy.n = 0; /* can't initialize with designators in initializer */
     initialized = 1;
 }
 
