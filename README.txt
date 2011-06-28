@@ -6,9 +6,9 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is version 0.1.7 of the Q Math Library.  Only Windows, 32-bit Linux and
-32-bit Darwin are currently supported, but the source code and build system
-are designed to be portable.
+This is version 0.1.8 of the Q Math Library.  Only Windows, 32-bit Linux and
+32-bit Darwin have been tested, but the source code and build system are
+designed to be portable.
 
 
 2. Licensing
@@ -53,11 +53,10 @@ is working correctly.
 
 To rebuild the library, use the Makefile, which is for GNU make.  There are
 configuration options near the top.  On Windows, rebuilding requires Cygwin or
-another GNU environment.  On other platforms, GCC version 4 is recommended.
-Although only tested on the platforms for which binaries are included, it
-should compile on any platform with a few tweaks.  If you rebuild the library,
-make sure to run the test suite before using it.  If you're so inclined,
-please contact the author to report both problems and successful builds.
+another GNU environment.  On other platforms, GCC is required.  Although only
+tested on the platforms for which binaries are included, it should compile on
+any platform with a few tweaks.  If you rebuild the library, make sure to run
+the test suite before using it.
 
 
 4. Constants and functions
@@ -116,23 +115,36 @@ please contact the author to report both problems and successful builds.
 
   ncdf[x]                 CDF of normal distribution
   nicdf[p]        inverse CDF of normal distribution
-  c2cdf[k;x]              CDF of chi-squared distribution (k>=1,x>=0)
-  c2icdf[k;p]     inverse CDF of chi-squared distribution (k>=1,p>=.5)
+  c2cdf[k;x]              CDF of chi-squared distribution (k>=1)
+  c2icdf[k;p]     inverse CDF of chi-squared distribution (k>=1)
   stcdf[k;x]              CDF of Student's t-distribution (natural k)
   sticdf[k;p]     inverse CDF of Student's t-distribution (natural k)
   fcdf[d1;d2;x]           CDF of F-distribution (d1,d2>=1,x>=0)
   ficdf[d1;d2;p]  inverse CDF of F-distribution (d1,d2>=1,x>=0)
-  gcdf[k;th;x]            CDF of gamma distribution (x>=0)
-  gicdf[k;th;x]   inverse CDF of gamma distribution (x>=0,p>=.5)
+  gcdf[k;th;x]            CDF of gamma distribution
+  gicdf[k;th;p]   inverse CDF of gamma distribution
+  bncdf[k;n;p]            CDF of binomial distribution
+  bnicdf[k;n;x]   inverse CDF of binomial distribution for p parameter (k<n)
+  pscdf[k;lambda]         CDF of Poisson distribution
+  psicdf[k;p]     inverse CDF of Poisson distribution for lambda parameter
+  smcdf[n;e]              CDF for one-sided Kolmogorov-Smirnov test
+  smicdf[n;e]     inverse CDF for one-sided Kolmogorov-Smirnov test
+  kcdf[x]                 CDF for Kolmogorov distribution
+  kicdf[p]        inverse CDF for Kolmogorov distribution (p>=1e-8)
 
-  mdiag[diag]     make diagonal matrix
+  diag[diag]      make diagonal matrix
+  mdiag[matrix]   extract main diagonal
   mdet[matrix]    determinant
+  mrank[matrix]   rank
   minv[matrix]    inverse
   mpinv[matrix]   pseudoinverse
   mev[matrix]     (eigenvalues; eigenvectors) sorted by decreasing modulus
   mchol[matrix]   Cholesky factorization upper matrix
   mqr[matrix]     QR factorization: (Q; R)
-  mlup[matrix]    LUP factorization: (L; U; P), matrix[P]=L mmu U
+  mqrp[matrix]    QR factorization with column pivoting:
+                    (Q; R; P), matrix@\:P=Q mmu R
+  mlup[matrix]    LUP factorization with row pivoting:
+                    (L; U; P), matrix[P]=L mmu U
   msvd[matrix]    singular value decomposition: (U; Sigma; V)
 
   poly[coef]      roots of a polynomial (highest-degree coefficient first, can

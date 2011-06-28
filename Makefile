@@ -37,7 +37,7 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
   else
     ifeq "$(shell uname -s)" "Linux"
       ifeq "$(shell uname -m)" "x86_64"
-        $(warning l64 platform is currently not supported)$(shell sleep 3)
+        $(warning l64 platform is not tested)$(shell sleep 3)
         PLATFORM=l64
       else
         PLATFORM=l32
@@ -45,7 +45,7 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
     else
       ifeq "$(shell uname -s)" "Darwin"
         ifeq "$(shell uname -m)" "x86_64"
-          $(warning m64 platform is currently not supported)$(shell sleep 5)
+          $(warning m64 platform is not tested)$(shell sleep 5)
           PLATFORM=m64
         else
           PLATFORM=m32
@@ -54,18 +54,18 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
         ifeq "$(shell uname -s)" "SunOS"
           ifneq "$(findstring i386,$(shell isainfo))" ""
             ifeq "$(shell isainfo -b)" "64"
-              $(warning v64 platform is currently not supported)$(shell sleep 5)
+              $(warning v64 platform is not tested)$(shell sleep 5)
               PLATFORM=v64
             else
-              $(warning v32 platform is currently not supported)$(shell sleep 5)
+              $(warning v32 platform is not tested)$(shell sleep 5)
               PLATFORM=v32
             endif
           else
             ifeq "$(shell isainfo -b)" "64"
-              $(warning s64 platform is currently not supported)$(shell sleep 5)
+              $(warning s64 platform is not tested)$(shell sleep 5)
               PLATFORM=s64
             else
-              $(warning s32 platform is currently not supported)$(shell sleep 5)
+              $(warning s32 platform is not tested)$(shell sleep 5)
               PLATFORM=s32
             endif
           endif
@@ -144,9 +144,10 @@ else
     AS=$(TOOLPREPEND)as
     OBJEXT=o
     LIBEXT=a
-    CFLAGS+= -std=gnu99 -O2 -fno-strict-aliasing -pipe
+    CFLAGS+= -std=gnu99 -O2 -fno-strict-aliasing -ffloat-store -pipe
     # -fstrict-aliasing breaks fdlibm
-    CFLAGS+= -fno-builtin-sin -fno-builtin-cos
+    # -fno-float-store seems to break incbi() on Linux
+    CFLAGS+= -fno-builtin-sin -fno-builtin-cos -fno-builtin-sqrt
     CFLAGS+= -Wall -Wno-parentheses -Wno-uninitialized
     ENVFLAGS=
     ifeq "$(PLATFORMCLASS)" "w"
@@ -157,9 +158,7 @@ else
         DLLEXT=so
         EXEEXT=
         CFLAGS+= -fPIC
-    endif
-    ifneq "$(findstring $(PLATFORMCLASS),m s)" ""
-        # explicit binary type on Darwin and OpenSolaris
+        # explicit binary type
         ifeq "$(patsubst %64,,$(PLATFORM))" ""
             CFLAGS+= -m64
         else
@@ -219,6 +218,7 @@ CLAPACK_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/clapack_nowrap.lib
 CLAPACK_SRC=$(CLAPACK_DIR)/clapack.tgz
 #   f2c program
 F2C_BIN_GZ=http://www.netlib.org/f2c/mswin/f2c.exe.gz
+F2C_SRC=ftp://ftp.netlib.org/f2c/src.tar.gz
 F2C_H=http://www.netlib.org/f2c/f2c.h
 #   cpoly and rpoly
 CPOLY_F=http://www.netlib.org/toms/419
@@ -272,6 +272,9 @@ download/clapack.tgz:
 download/f2c.exe.gz:
 	mkdir -p download && wget -O '$@' '$(F2C_BIN_GZ)'
 
+download/f2c.tar.gz:
+	mkdir -p download && wget -O '$@' '$(F2C_SRC)'
+
 download/f2c.h:
 	mkdir -p download && wget -O '$@' '$(F2C_H)'
 
@@ -312,9 +315,11 @@ lib/fdlibm.$(LIBEXT): fdlibm/fdlibm.$(LIBEXT)
 
 # Patch and build Cephes library
 ifeq "$(BUILD)" "gpl"
-    cephes/.extracted: download/labplot.tar.gz
-	mkdir -p cephes && tar xzf '$<' -C cephes --wildcards 'LabPlot-*/cephes'
+    cephes/.extracted: download/labplot.tar.gz download/cprob.tgz
+	mkdir -p cephes && tar xzf '$<' -C cephes
 	mv -f cephes/LabPlot-*/cephes/* cephes/
+	mkdir -p cephes/cprob && tar xzf download/cprob.tgz -C cephes/cprob
+	mv -f cephes/cprob/{bdtr,kolmogorov}.c cephes/
 	touch '$@'
 else
   ifeq "$(BUILD)" "bsd"
@@ -335,14 +340,18 @@ cephes/.patched: cephes/.extracted
 	sed -i.tmp -e 's/erf/c_erf/g' \
 	    -e '1{h;s/.*/extern double c_erf(double), c_erfc(double);/p;g;}' \
 	    cephes/ndtr.c
-	sed -i.tmp -e 's/y01/y0/g;/double igami(/{N;N;N;N;N;' \
-	    -e 's/$$/if(y0>.5||y0<=0)return(NAN);/;}' cephes/igami.c
+	sed -i.tmp -e 's/y01/y0/g;/double  *igami(/{:a' \
+	    -e 's/{/&if(y0<=0||y0>=1)return(NAN);/;t b' -e 'N;b a' -e ':b' \
+	    -e '};' cephes/igami.c
+	sed -i.tmp -e 's/\(for *( *i *= *0; *i *< *\)1\(00 *;\)/\15\2/' \
+	    cephes/incbi.c
 	for file in cephes/*.h; do \
 	    sed -i.tmp -e 's/true_gamma/gamma/g' "$$file"; done
 	for file in $(filter-out %/const.c,$(wildcard cephes/*.c)); do \
 	    sed -i.tmp -e 's/true_gamma/gamma/g' \
-	    -e 's/char st\{0,1\}\[\]="[[:alnum:]][[:alnum:]]*";//' \
-	    -e 's/mtherr( *["sf][^,]*,[^)]*)/return(NAN)/' \
+	    -e 's/char st\{0,1\}\[\]="[[:alnum:]][[:alnum:]]*";//g' \
+	    -e 's/mtherr *( *["sf][^,]*, *PLOSS *)//g' \
+	    -e 's/mtherr *( *["sf][^,]*,[^)]*)/return(NAN)/g' \
 	    -e '1{h;s/.*/extern double NAN;/p;g;}' "$$file"; done
 	sed -i.tmp -n -e 'H;$${x;' \
 	    -e 's/( *!isfinite(x) *)/(x==INFINITY||x==-INFINITY)/g' \
@@ -350,6 +359,10 @@ cephes/.patched: cephes/.extracted
 	    -e 's/double  *gamma([^)]*)[^;][^{]*{/&int sgngam;/g' \
 	    -e 's/double  *lgam([^)]*)[^;][^{]*{/&int sgngam;/g' \
 	    -e 'p;}' cephes/gamma.c
+	sed -i.tmp -e '/if *( *n *<= *0[^0-9]/{N' \
+	    -e 's/\(return *(\)-1\.[^)]*/\1NAN/;};/^ *kolmogorov *(/{:a' \
+	    -e 's/{/&if(y<.12)return 1;/;t b' -e 'N;b a' -e ':b' -e '}' \
+	    cephes/kolmogorov.c
 	if test -e cephes/cmath.h; then \
 	    sed -i.tmp -e 's/extern  *int  *sgngam;//' cephes/cmath.h; fi
 	if test -e cephes/simq.c; then \
@@ -492,10 +505,30 @@ else
 endif
 
 
+# Build f2c
+ifeq "$(PLATFORMCLASS)" "w"
+    f2c/f2c$(EXEEXT): download/f2c.exe.gz
+	mkdir -p f2c && gunzip -c '$<' >'$@' && chmod +x '$@'
+else
+    f2c/.extracted: download/f2c.tar.gz
+	mkdir -p f2c && tar xzf '$<' -C f2c
+	mv -f f2c/src/* f2c/
+	touch '$@'
+
+    f2c/.patched: f2c/.extracted
+	{ echo 'CC=$(CC)'; echo 'CFLAGS=$(DEFINES) $(CFLAGS)'; \
+	    sed -e '/^ *CC *=/d;/^ *CFLAGS *=/d;/^f2c:/{n;' \
+	        -e 's/\$$(CC) /&$$(CFLAGS) /;}' f2c/makefile.u; } >f2c/Makefile
+	sed -i.tmp -e '/Cextern int \(unlink\|fork\)/d' f2c/sysdep.c
+	touch '$@'
+
+    f2c/f2c$(EXEEXT): f2c/.patched
+	cd f2c && make f2c
+endif
+
+
 # Build cpoly
 ifeq "$(BUILD)" "gpl"
-    $(error This configuration is currently not thread-safe)
-
     cpoly/cpoly.c: download/cpoly.c
 	mkdir -p cpoly && cp -f '$<' '$@'
 	sed -i.tmp -e 's/Rboolean *\*fail/int *fail, double* work/' \
@@ -504,12 +537,25 @@ ifeq "$(BUILD)" "gpl"
 	    -e 's/R_alloc[^;]*/work/;/<Rmath\.h>/d;s/R_pow_di/pow/' \
 	    -e '1{h;s/.*/#define M_SQRT2 1.4142135623730950488/p;' \
 	    -e 's/.*/#define M_SQRT1_2 0.7071067811865475244/p;' \
-	    -e 's/.*/extern double INFINITY;/p;g;}' \
-	    -e '/<R_ext\/Applic\.h>/d' cpoly/cpoly.c
+	    -e 's/.*/extern double INFINITY;/p;s/.*/struct Glb;/p;g;}' \
+	    -e '/<R_ext\/Applic\.h>/d'  \
+	    -e '/\/\* Global Variables/{s/$$/struct Glb {/;:a' \
+	    -e 's/static //;n;s/^#/&/;t a' -e 's/^$$/&/;t a' \
+	    -e 's/^static int/&/;t a' -e 's/^static double/&/;t a' \
+	    -e 's/^/}; /;};s/double \*tmp;/&struct Glb glb_,*glb=\&glb_;/' \
+	    -e 's/^[[:space:]]\{1,\}static const/;&/' \
+	    -e 's/^\([[:space:]]\{1,\}\)static /\1/' \
+	    $(foreach var,\
+	        nn pr pi hr hi qpr qpi qhr qhi shr shi sr si tr ti pvr pvi,\
+	        -e 's/\([^_[:alnum:]]\)\($(var)[^_[:alnum:]]\)/\1glb->\2/g') \
+	    $(foreach func,noshft fxshft vrshft calct nexth,\
+	        -e 's/\([^_[:alnum:]]\)$(func)./&glb,/g' \
+	        -e '/static .* $(func)./{s//&struct Glb*/;}') \
+	    cpoly/cpoly.c
 
-    cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c include/fdlibm.h lib/cephes.$(LIBEXT)
+    cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c include/fdlibm.h
 	cd cpoly && $(call cc,cpoly.c,-I../include -DHAVE_HYPOT)
-	cd cpoly && $(call ar,cpoly,cpoly.$(OBJEXT) ../lib/cephes.$(LIBEXT))
+	cd cpoly && $(call ar,cpoly,cpoly.$(OBJEXT))
 
     lib/cpoly.$(LIBEXT): cpoly/cpoly.$(LIBEXT)
 	mkdir -p lib && cp -f '$<' '$@'
@@ -517,32 +563,27 @@ else
   ifeq "$(BUILD)" "bsd"
     # only need LAPACK
   else
-    cpoly/f2c.exe: download/f2c.exe.gz
-	mkdir -p cpoly && gunzip -c '$<' >'$@' && chmod +x '$@'
-
-    cpoly/f2c.h: download/f2c.h
-	mkdir -p cpoly && cp -f '$<' '$@'
-
     cpoly/cpoly.orig.f cpoly/rpoly.orig.f: cpoly/%.orig.f: download/%.f
 	mkdir -p cpoly && cp -f '$<' '$@'
 
-    cpoly/cpoly.orig.c cpoly/rpoly.orig.c: %.c: %.f cpoly/f2c.exe
-	cd cpoly && ./f2c.exe -a '$(notdir $<)'
+    cpoly/cpoly.orig.c cpoly/rpoly.orig.c: %.c: %.f f2c/f2c$(EXEEXT)
+	cd cpoly && ../f2c/f2c$(EXEEXT) -a '$(notdir $<)'
 
     cpoly/cpoly.c cpoly/rpoly.c: %.c: %.orig.c
 	sed -e 's/\([0-9][0-9]*e[0-9][0-9]*\)f/\1/;s/\(\.[0-9][0-9]*\)f/\1/' \
-	    -e '/extern \/\* Subr/{/^[^;]*$$/{:n' -e 'N;s/^[^;]*$$/\0/;t n' \
+	    -e '/extern \/\* Subr/{/^[^;]*$$/{:n' -e 'N;s/^[^;]*$$/&/;t n' \
 	    -e '};};s/^\(struct \){/\1Global {/;s/^} global_;/};/' \
-	    -e 's/_(/\0global_,/g' \
-	    -e 's/\(int\|doublereal\) [^ ]*_(/\0struct Global* /g' \
-	    -e '/extern \/\* Subr/s/,[^,_]*_(/\0struct Global* /g' \
+	    -e 's/_(/&global_,/g;s/int [a-z]*_(/&struct Global* /g' \
+	    -e 's/doublereal [a-z]*_(/&struct Global* /g' \
+	    -e '/extern \/\* Subr/s/,[^,_]*_(/&struct Global* /g' \
 	    -e 's/\([cr]poly_(\)[^,]*,/\1/g;/int [cr]poly_/{N;N' \
 	    -e 's/$$/struct Global global,*global_=\&global;/;}' \
 	    -e 's/^\(#define global_1 \)\(global_\)/\1(*\2)/;s/,void//' \
-	    -e '/\/\* Main program alias/d' '$<' > '$@'
+	    -e '/\/\* Main program alias/d' \
+	    -e '/int MAIN__(/,/} \/\* MAIN__ /d' '$<' > '$@'
 
-    cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c cpoly/rpoly.c cpoly/f2c.h
-	cd cpoly && $(call cc,cpoly.c rpoly.c,-DMSDOS)
+    cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c cpoly/rpoly.c include/f2c.h
+	cd cpoly && $(call cc,cpoly.c rpoly.c,-I../include -DMSDOS)
 	cd cpoly && $(call ar,cpoly,cpoly.$(OBJEXT) rpoly.$(OBJEXT))
 
     lib/cpoly.$(LIBEXT): cpoly/cpoly.$(LIBEXT)
@@ -552,7 +593,7 @@ endif
 
 
 # Build QML
-VERSION=0.1.7
+VERSION=0.1.8
 CONFIG=QML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
     CONFIG+= QML_R_POLY
@@ -573,7 +614,8 @@ ifneq "$(BUILD)" "bsd"
     LIBS+= lib/cpoly.$(LIBEXT)
 endif
 LIBS+=lib/cephes.$(LIBEXT) lib/fdlibm.$(LIBEXT)
-LIBS+=lib/clapack.$(LIBEXT) lib/blas.$(LIBEXT) lib/f2c.$(LIBEXT)
+LIBS+=lib/clapack.$(LIBEXT) lib/blas.$(LIBEXT)
+LIBS+=lib/f2c.$(LIBEXT) lib/fdlibm.$(LIBEXT)
 
 build/config.c:
 	mkdir -p build
@@ -649,7 +691,7 @@ dist:
 
 # Clean up
 cleanpart:
-	rm -rf cephes fdlibm cpoly qlib include lib build
+	rm -rf cephes fdlibm f2c cpoly qlib include lib build
 
 clean: cleanpart
 	rm -rf clapack

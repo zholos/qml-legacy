@@ -188,22 +188,30 @@ WRAPf(j0)WRAPf(j1)WRAPf(y0)WRAPf(y1)
 WRAPf(sqrt)WRAPf(cbrt)WRAPff(hypot)
 
 // Cephes probability functions
-extern double gamma(double);
-extern double igam(double, double);
-extern double igamc(double, double);
-extern double igami(double, double);
-extern double incbet(double, double, double);
-extern double incbi(double, double, double);
-extern double ndtr(double);
-extern double ndtri(double);
-extern double stdtr(int, double);
-extern double stdtri(int, double);
-extern double fdtr(int, int, double);
-extern double fdtrc(int, int, double);
-extern double fdtri(int, int, double);
-extern double chdtrc(double, double);
-extern double chdtr(double, double);
-extern double chdtri(double, double);
+double gamma(double);
+double igam(double, double);
+double igamc(double, double);
+double igami(double, double);
+double incbet(double, double, double);
+double incbi(double, double, double);
+double ndtr(double);
+double ndtri(double);
+double stdtr(int, double);
+double stdtri(int, double);
+double fdtr(int, int, double);
+double fdtrc(int, int, double);
+double fdtri(int, int, double);
+double chdtrc(double, double);
+double chdtr(double, double);
+double chdtri(double, double);
+double bdtr(int, int, double);
+double bdtri(int, int, double);
+double pdtr(int, double);
+double pdtri(int, double);
+double smirnov(int, double);
+double kolmogorov(double);
+double smirnovi(int, double);
+double kolmogi(double);
 
 // this is not available in all distributions of Cephes so we provide it here
 F beta(F x, F y) {
@@ -215,24 +223,45 @@ F beta(F x, F y) {
     R sx*sy*sxy*exp(r);
 }
 
-// chdtri returns the inverse of the complementary CDF
+// chdtri() returns the inverse of the complementary CDF
 F c2icdf(F x, F y) {
     R chdtri(x, 1-y);
 }
 
-// fdtri returns the inverse of the complementary CDF
+// fdtri() returns the inverse of the complementary CDF
 F ficdf(I x, I y, F z) {
     R fdtri(x, y, 1-z);
 }
 
-// gdtr interprets second parameter differently
+// gdtr() interprets second parameter differently
 F gcdf(F x, F y, F z) {
     R igam(x, z/y);
 }
 
-// no gdtri function
+// no gdtri() function
 F gicdf(F x, F y, F z) {
     R y*igami(x, 1-z);
+}
+
+// smirnov() returns complementary CDF
+F smcdf(I x, F y) {
+    R 1-smirnov(x, y);
+}
+
+// smirnovi() returns inverse of the complementary CDF
+F smicdf(I x, F y) {
+    R smirnovi(x, 1-y);
+}
+
+// komogorov() returns complementary CDF
+F kcdf(F x) {
+    R 1-kolmogorov(x);
+}
+
+// komogoi() returns inverse of the complementary CDF
+F kicdf(F x) {
+    P(x<1e-8,nf) // doesn't converge well for small values
+    R kolmogi(1-x);
 }
 
 WRAPf(gamma)
@@ -244,6 +273,10 @@ WRAPnif(stcdf,stdtr)WRAPnif(sticdf,stdtri)
 WRAPniif(fcdf,fdtr)WRAPniif(ficdf,ficdf)
 WRAPnff(c2cdf,chdtr)WRAPnff(c2icdf,c2icdf)
 WRAPnfff(gcdf,gcdf)WRAPnfff(gicdf,gicdf)
+WRAPniif(bncdf,bdtr)WRAPniif(bnicdf,bdtri)
+WRAPnif(pscdf,pdtr)WRAPnif(psicdf,pdtri)
+WRAPnif(smcdf,smcdf)WRAPnif(smicdf,smicdf)
+WRAPf(kcdf)WRAPf(kicdf)
 
 // Utility functions
 Z integer min_i(I x, I y) {
@@ -434,7 +467,7 @@ K QML_EXPORT qml_mchol(K x) {
 
     dpotrf_("U", &n, kF(a), &n, &j);
     if (j!=0)
-        { r0(a); R k>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
+        { r0(a); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, n);
     for (j=0; j<n; ++j) {
@@ -447,17 +480,20 @@ K QML_EXPORT qml_mchol(K x) {
     r0(a); R x;
 }
 
-// QR factorization
-K QML_EXPORT qml_mqr(K x) {
+// QR factorization base
+ZK qr(K x, const int pivot) {
     char* err;
     integer j, k, n, m, min, lwork;
     F maxwork, *q;
-    K f, a = mfm(x, &m, &n, &err);
+    K jpiv, f, a = mfm(x, &m, &n, &err);
     P(a==0, krr(ss(err)))
 
     min = min_i(m, n);
     lwork = -1;
-    dgeqrf_(&m, &n, NULL, &m, NULL, &maxwork, &lwork, &j);
+    if (pivot)
+        dgeqp3_(&m, &n, NULL, &m, NULL, NULL, &maxwork, &lwork, &j);
+    else
+        dgeqrf_(&m, &n, NULL, &m, NULL, &maxwork, &lwork, &j);
     if (j!=0)
         { r0(a); R krr(ss("qml_assert")); }
     j = (integer)(maxwork+.5);
@@ -468,11 +504,22 @@ K QML_EXPORT qml_mqr(K x) {
     lwork = max_i(max_i(j, k), n);
 
     f = ktn(KF, min + lwork + (n<m ? m*m : 0));
-    dgeqrf_(&m, &n, kF(a), &m, kF(f), kF(f)+min, &lwork, &j);
+    if (pivot) {
+        jpiv = ktn(QML_KLONG, n);
+        DO(n, QML_kLONG(jpiv)[i] = 0)
+        dgeqp3_(&m, &n, kF(a), &m, QML_kLONG(jpiv), kF(f), kF(f)+min, &lwork,
+            &j);
+    } else
+        dgeqrf_(&m, &n, kF(a), &m, kF(f), kF(f)+min, &lwork, &j);
     if (j!=0)
-        { r0(f); r0(a); R krr(ss("qml_assert")); }
+        { if (pivot) r0(jpiv); r0(f); r0(a); R krr(ss("qml_assert")); }
 
-    x = ktn(0, 2);
+    x = ktn(0, pivot ? 3 : 2);
+    if (pivot) {
+        xK[2] = ktn(KI, n);
+        DO(n, kI(xK[2])[i] = QML_kLONG(jpiv)[i]-1)
+        r0(jpiv);
+    }
     xK[0] = ktn(0, m);
     xK[1] = ktn(0, m);
     for (j=0; j<m; ++j) {
@@ -499,6 +546,16 @@ K QML_EXPORT qml_mqr(K x) {
         DO(m, kF(kK(xK[0])[j])[i] = q[i*m+j])
     }
     r0(f); r0(a); R x;
+}
+
+// QR factorization
+K QML_EXPORT qml_mqr(K x) {
+    R qr(x, 0);
+}
+
+// QR factorization with column pivoting
+K QML_EXPORT qml_mqrp(K x) {
+    R qr(x, 1);
 }
 
 // LUP factorization
@@ -587,15 +644,17 @@ K QML_EXPORT qml_msvd(K x) {
     void R_cpolyroot(double *opr, double *opi, int *degree, double *zeror,
         double *zeroi, int *fail, double* work);
 #elif !defined(QML_LAPACK_POLY)
-    int cpoly_(double *opr, double* opi, long* degree,
-        double *zeror, double* zeroi, long* fail);
-    int rpoly_(double *op, long* degree,
-        double *zeror, double* zeroi, long* fail);
+    int cpoly_(double *opr, double* opi, integer* degree,
+        double *zeror, double* zeroi, logical* fail);
+    int rpoly_(double *op, integer* degree,
+        double *zeror, double* zeroi, logical* fail);
 #endif
 
 K QML_EXPORT qml_poly(K x) {
+#ifdef QML_R_POLY
+    I j, n;
+#else
     integer j, n;
-#ifndef QML_R_POLY
     I complex;
 #endif
     K a, c, r;
@@ -758,7 +817,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 
 K QML_EXPORT qml_const(K x) {
     F r;
-    P(!initialized, krr(ss("qml_assert"))) // catch possibly missed init here
+    P(!initialized, krr(ss("qml_assert"))) // catch potentially missed init here
     P(xt!=-KI, krr(ss("type")))
     SW(xi) {
         CS(0,R ks(QUOTE(QML_VERSION)))
