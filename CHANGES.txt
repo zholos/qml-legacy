@@ -1,3 +1,9 @@
+Version 0.3.1 on 2011-06-01:
+  * Removed support for alternative build profiles and for compiling using
+    Windows SDK.
+  * Added option to compile with ATLAS instead of reference BLAS, improving
+    LAPACK performance.
+
 Version 0.2.1 on 2010-02-17:
   * Added 'root'/'rootx', 'solve'/'solvex', 'line'/'linex', 'min'/'minx' and
    'conmin'/'conminx' nonlinear optimization functions.

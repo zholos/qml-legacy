@@ -6,7 +6,7 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes, LAPACK and CONMAX libraries.
 
-This is version 0.2.1 of the Q Math Library.
+This is version 0.3.1 of the Q Math Library.
 
 
 2. Licensing
@@ -52,12 +52,12 @@ real and imaginary parts.  E.g.:
 It's recommended to run the test suite, test.q, to make sure that everything
 is working correctly.
 
-To rebuild the library, use the Makefile, which is for GNU make.  There are
-configuration options near the top.  On Windows, rebuilding requires Cygwin or
-another GNU environment.  On other platforms, GCC is required.  Although only
-tested on the platforms for which binaries are included, it should compile on
-any platform with a few tweaks.  If you rebuild the library, make sure to run
-the test suite before using it.
+Building the library requires GNU make and GCC.  On Windows, these are provided
+by Cygwin.  The build, just run make.  See the top of the Makefile for options.
+
+    make BLAS=atlas
+
+    make test
 
 
 4. Constants and functions

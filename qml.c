@@ -232,7 +232,7 @@ double kolmogorov(double);
 double smirnovi(int, double);
 double kolmogi(double);
 
-// this is not available in all distributions of Cephes so we provide it here
+// this is not available with Cephes so we provide it here
 F beta(F x, F y) {
     I sx, sy, sxy;
     F r;
@@ -659,33 +659,13 @@ K QML_EXPORT qml_msvd(K x) {
 
 
 // Polynomial root finding
-#ifdef QML_R_POLY
-    void R_cpolyroot(double *opr, double *opi, int *degree, double *zeror,
-        double *zeroi, int *fail, double* work);
-#elif !defined(QML_LAPACK_POLY)
-    int cpoly_(double *opr, double* opi, integer* degree,
-        double *zeror, double* zeroi, logical* fail);
-    int rpoly_(double *op, integer* degree,
-        double *zeror, double* zeroi, logical* fail);
-#endif
-
 K QML_EXPORT qml_poly(K x) {
-#ifdef QML_R_POLY
-    I j, n;
-#else
     integer j, n;
     I complex;
-#endif
     K a, c, r;
-#ifdef QML_LAPACK_POLY
     F d, maxwork[2];
     integer lwork;
     K work;
-#elif defined(QML_R_POLY)
-    K work;
-#else
-    integer k;
-#endif
 
     if ((a=mf(x))==0) {
         P(xt!=0, krr(ss("type")))
@@ -705,9 +685,7 @@ K QML_EXPORT qml_poly(K x) {
             }
             r0(a);
         }
-#ifndef QML_R_POLY
         complex = 1;
-#endif
     } else {
         if (a->t<0)
             { r0(a); R krr(ss("type")); }
@@ -717,21 +695,13 @@ K QML_EXPORT qml_poly(K x) {
         DO(n, kF(c)[i] = kF(a)[i])
         DO(n, kF(c)[n+i] = 0)
         r0(a);
-#ifndef QML_R_POLY
         complex = 0;
-#endif
     }
-#ifdef QML_R_POLY
-    if (n > 50) /* matches constant in cpoly.c */
-#else
-    if (n > (complex ? 50 : 100)) /* matches constants in cpoly.c and rpoly.c */
-        /* not strictly necessary for LAPACK version, but reasonable */
-#endif
+    if (n > 1000) /* reasonable limit */
         { r0(c); R krr(ss("limit")); }
     --n;
 
     a = ktn(KF, n*2);
-#ifdef QML_LAPACK_POLY
     /* compute roots as the eigenvalues of the companion matrix */
     if (complex)
         d = kF(c)[0]*kF(c)[0] + kF(c)[n+1]*kF(c)[n+1];
@@ -779,30 +749,14 @@ K QML_EXPORT qml_poly(K x) {
         if (j<0)
             { r0(c); r0(a); R krr(ss("roots")); }
     }
-#elif defined(QML_R_POLY)
-    work = ktn(KF, 10*(n+1)); /* matches expression in cpoly.c */
-    R_cpolyroot(kF(c), kF(c)+n+1, &n, kF(a), kF(a)+n, &j, kF(work));
-    r0(work);
-#else
-    if (!complex) {
-        k = n;
-        rpoly_(kF(c), &k, kF(a), kF(a)+n, &j);
-        if (j)
-            goto cpoly; /* fallback to cpoly, e.g. for 5 0 0 0 0 1 */
-    } else
-    cpoly:
-        cpoly_(kF(c), kF(c)+n+1, &n, kF(a), kF(a)+n, &j);
-#endif
     r0(c);
     if (j!=0)
         { r0(a); R krr(ss("roots")); }
     r = ktn(0, n);
     for (j=0; j<n; ++j)
-#ifdef QML_LAPACK_POLY
         if (complex)
             kK(r)[j] = mcv(kF(a)[j*2], kF(a)[j*2+1]);
         else
-#endif
             kK(r)[j] = mcv(kF(a)[j], kF(a)[n+j]);
     r0(a); R r;
 }
@@ -1047,7 +1001,7 @@ ZK solvemin(K fun, K con, K start, I maxiter, F tolcon, I steps, I slp, I rk,
         ifun = 1;
     }
 
-    P(2*nparm+4*numgr>2000000000/nparm, krr(ss("limit")))
+    P(nparm!=0 && 2*nparm+4*numgr>2000000000/nparm, krr(ss("limit")))
     liwrk = 7*numgr + 7*nparm + 3;
     lwrk = 2*nparm*nparm + 4*numgr*nparm + 11*numgr + 27*nparm + 13;
     iwork = ktn(QML_KLONG, liwrk);
