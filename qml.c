@@ -46,7 +46,7 @@
 #define alloc(x, n, c)                                                 \
     do {                                                               \
         I alloc__n = (n);                                              \
-        check(alloc__n < wi &&                                         \
+        check(alloc__n >= 0 && alloc__n < wi &&                        \
               alloc__n <= SIZE_MAX / sizeof *x, krr(ss("limit")),  c); \
         check(x = malloc(alloc__n * sizeof *x), krr(ss("wsfull")), c); \
     } while (0)
@@ -356,6 +356,7 @@ wrap_FF_(fmod)
 wrap_F_(erf)
 wrap_F_(erfc)
 wrap_F_(lgamma)
+wrap_F(gamma, tgamma)
 wrap_F_(j0)
 wrap_F_(j1)
 wrap_F_(y0)
@@ -365,8 +366,23 @@ wrap_F_(cbrt)
 wrap_FF_(hypot)
 
 
+static I
+sgamma(F x) {
+    if (x > 0)
+        return 1;
+    return fmod(x, 2) > -1 ? -1 : 1;
+}
+
+static F
+beta(F x, F y) {
+    return sgamma(x) * sgamma(y) * sgamma(x + y) *
+       exp(lgamma(x) + lgamma(y) - lgamma(x + y));
+}
+
+wrap_FF_(beta)
+
+
 // Cephes probability functions
-double gamma(double);
 double igam(double, double);
 double igamc(double, double);
 double igami(double, double);
@@ -391,15 +407,6 @@ double kolmogorov(double);
 double smirnovi(int, double);
 double kolmogi(double);
 
-// this is not available with Cephes so we provide it here
-static F
-beta(F x, F y) {
-    I sx, sy, sxy;
-    F r = lgamma_r(x,     &sx);
-     r += lgamma_r(y,     &sy);
-     r -= lgamma_r(x + y, &sxy);
-    return sx * sy * sxy * exp(r);
-}
 
 // chdtri() returns the inverse of the complementary CDF
 static F
@@ -450,8 +457,6 @@ kicdf(F x) {
     return kolmogi(1 - x);
 }
 
-wrap_F_(gamma)
-wrap_FF_(beta)
 wrap_fF(pgammar, igam)
 wrap_fF(pgammarc, igamc)
 wrap_fF(ipgammarc, igami)
@@ -478,6 +483,91 @@ wrap_F_(kicdf)
 
 
 //
+// Options processing
+//
+
+struct opt {
+    const char* s;
+    I t; // 0 for boolean, -KI, or -KF
+};
+
+union optv {
+    I i; /* first member */
+    F f;
+};
+
+static int
+take_opt_get(K x, I i, int flat, const S s,
+             const struct opt* opt, union optv* v)
+{
+    check(s, 0,);
+    check(*s, 1,);
+
+    I k;
+    for (k = 0; opt[k].s; k++)
+        if (!strcmp(s, opt[k].s))
+            goto found;
+    return 0;
+
+found:
+    if (!opt[k].t && flat) {
+        v[k].i = 1;
+        return 1;
+    } else {
+        check(x && xt>=0 && i < xn, 0,);
+        if (opt[k].t==-KF) {
+            if (!xt) {
+                check(is_f(xK[i]), 0,);
+                v[k].f = as_f(xK[i]);
+            } else {
+                check(is_F(x), 0,);
+                v[k].f = item_F(x, i);
+            }
+        } else {
+            if (!xt) {
+                check(is_i(xK[i]), 0,);
+                v[k].i = as_i(xK[i]);
+            } else {
+                check(is_I(x), 0,);
+                v[k].i = item_I(x, i);
+            }
+        }
+        return 2;
+    }
+}
+
+// Fills in an optv array
+static int // 1 on success
+take_opt(K x, const struct opt* opt, union optv* v) {
+    switch (xt) {
+    case 0:
+        repeat (i, xn) {
+            S s = xK[i]->t==-KS ? xK[i]->s : NULL;
+            int r = take_opt_get(x, i+1, 1, s, opt, v);
+            check(r, 0,);
+            i += r-1;
+        }
+        break;
+    case -KS:
+    case KS:
+        repeat (i, xt>0 ? xn    : 1) {
+            S s =  xt>0 ? xS[i] : xs;
+            check(take_opt_get(NULL, 0, 1, s, opt, v), 0,);
+        }
+        break;
+    case XD:
+        check(xx->t==KS || !xx->t, 0,);
+        repeat (i, xx->n) {
+            S s = xx->t==KS         ? kS(xx)[i] :
+                  kK(xx)[i]->t==-KS ? kK(xx)[i]->s : NULL;
+            check(take_opt_get(xy, i, 0, s, opt, v), 0,);
+        }
+    }
+    return 1;
+}
+
+
+//
 // Matrix functions
 //
 
@@ -488,9 +578,23 @@ int dgeqp3_(int* m, int* n, double* a, int* lda, int* jpvt,
             double* tau, double* work, int* lwork, int* info);
 int dorgqr_(int* m, int* n, int* k, double* a, int* lda,
             double* tau, double* work, int* lwork, int* info);
-int dgesvd_(char* jobu, char* jobvt, int* m, int* n, double* a, int* lda,
+int dgesdd_(char* jobz, int* m, int* n, double* a, int* lda,
             double* s, double* u, int* ldu, double* vt, int* ldvt,
-            double* work, int* lwork, int* info);
+            double* work, int* lwork, int* iwork, int* info);
+int dgesv_(int* n, int* nrhs, double* a, int* lda, int* ipiv,
+           double* b, int* ldb, int* info);
+int dgesvx_(char* fact, char* trans, int* n, int* nrhs,
+            double* a, int* lda, double* af, int* ldaf, int* ipiv,
+            char* equed, double* r, double* c,
+            double* b, int* ldb, double* x, int* ldx,
+            double* rcond, double* ferr, double* berr,
+            double* work, int* iwork, int* info);
+int dgels_(char* trans, int* m, int* n, int* nrhs, double* a, int* lda,
+           double* b, int* ldb, double* work, int* lwork, int* info);
+int dgelsd_(int* m, int* n, int* nrhs,
+            double* a, int* lda, double* b, int* ldb,
+            double* s, double* rcond, int* rank,
+            double* work, int* lwork, int *iwork, int* info);
 int dgeev_(char* jobvl, char* jobvr, int* n, double* a, int* lda,
            double* wr, double* wi_,
            double* vl, int* ldvl, double* vr, int* ldvr,
@@ -563,82 +667,80 @@ take_square_matrix(K x, F** r_, I* n_, int* triangular) {
 static int matrix_alloc_square_; // flag
 #define matrix_alloc_square (&matrix_alloc_square_)
 
+// ldr == m is allowed, otherwise *ldr must be set on input
 static K // returns error object
-take_matrix(K x, F** r_, I* m_, I* n_, int* column) {
-    I m, n;
-    F* r;
-
+take_matrix(K x, F** r, I* ldr, I* m, I* n, int* column) {
     if (column && column != matrix_alloc_square) {
         if (is_F(x)) {
-            alloc(r, add_size(0, m = xn, n = 1),);
-            copy_F(x, r, 1);
+            *m = xn; *n = 1;
+            *ldr = max_i(*ldr, *m); // if ldr == m, *ldr is set above
+            alloc(*r, add_size(0, *ldr, *n),);
+            copy_F(x, *r, 1);
             *column = 1;
-            goto done;
+            return no_error;
         }
         *column = 0;
     }
 
-    check_type(!xt && (m = xn),);
-    repeat (j, m) {
+    check_type(!xt && (*m = xn) && is_F(xK[0]) && (*n = xK[0]->n),);
+    repeat (j, *m) {
         check_type(is_F(xK[j]),);
-        if (!j)
-            check_length(n =  xK[j]->n,);
-        else
-            check_length(n == xK[j]->n,);
+        check_length(*n == xK[j]->n,);
     }
+    *ldr = max_i(*ldr, *m); // if ldr == m, *ldr is set above
 
-    I n1 = column == matrix_alloc_square ? max_i(m, n) : n;
-    alloc(r, add_size(0, m, n1),);
-    repeat (j, m)
-        copy_F(xK[j], r + j, m);
-
-done:
-    *r_ = r;
-    *m_ = m;
-    *n_ = n;
+    I n1 = column == matrix_alloc_square ? max_i(*m, *n) : *n;
+    alloc(*r, add_size(0, *ldr, n1),);
+    repeat (j, *m)
+        copy_F(xK[j], *r + j, *ldr);
     return no_error;
 }
 
 
 static K
-make_vector(F* r, I n, I step) {
+make_vector(const F* r, I offset, I n, I step) {
     K x = ktn(KF, n);
-    if (step == 1)
-        memcpy(xF, r, n * sizeof *r);
+    if (!r)
+        repeat (i, n)
+            xF[i] = nf;
+    else if (step == 1)
+        memcpy(xF, r + offset, n * sizeof *r);
     else
         repeat (i, n)
-            xF[i] = r[i * step];
+            xF[i] = r[offset + i * step];
     return x;
 }
 
 
 #define matrix_transpose (-1)
 
+// r can be null
 static K
-make_matrix(F* r, I m, I n, int column) {
+make_matrix(const F* r, I ldr, I m, I n, int column) {
     if (column && column != matrix_transpose)
-        return make_vector(r, m, 1);
+        return make_vector(r, 0, m, 1);
 
     K x;
     if (column == matrix_transpose) {
         x = ktn(0, n);
         repeat (j, n)
-            xK[j] = make_vector(r + j * m, m, 1);
+            xK[j] = make_vector(r, j * ldr, m, 1);
     } else {
         x = ktn(0, m);
         repeat (j, m)
-            xK[j] = make_vector(r + j, n, m);
+            xK[j] = make_vector(r, j, n, ldr);
     }
     return x;
 }
 
+// r can be null
 static K
-make_upper_matrix(F* r, I ldr, I m, I n) {
+make_upper_matrix(const F* r, I ldr, I m, I n) {
     K x = ktn(0, m);
     repeat (j, m) {
         F* q = kF(xK[j] = ktn(KF, n));
         repeat (i, n)
-            q[i] = i < j ? 0 : r[j + i * ldr];
+            q[i] = i < j ? 0 : r ? r[j + i * ldr] : nf;
     }
     return x;
 }
@@ -656,13 +758,15 @@ make_complex(F a, F b) {
     }
 }
 
+// a and b can be null
 static K // xt==0 when complex
-make_complex_vector(F* a, F* b, int n, int step) {
-    repeat (i, n)
-        if (!(b[i] == 0))
-            goto complex;
+make_complex_vector(const F* a, const F* b, int n, int step) {
+    if (b)
+        repeat (i, n)
+            if (!(b[i] == 0))
+                goto complex;
 
-    return make_vector(a, n, step);
+    return make_vector(a, 0, n, step);
 
 complex:;
     K x = ktn(0, n);
@@ -712,14 +816,15 @@ qml_minv(K x) {
 
     info = clapack_dgetrf(CblasColMajor, n, n, a, n, ipiv);
     check_lapack_return(info,                              free(ipiv); free(a));
-    check(!info, ktn(0, 0),                                free(ipiv); free(a));
+    if (info)
+        goto done;
 
     info = clapack_dgetri(CblasColMajor, n, a, n, ipiv);
-    /*                                                  */ free(ipiv);
-    check_lapack_return(info,                                          free(a));
-    check(!info, ktn(0, 0),                                            free(a));
+    check_lapack_return(info,                              free(ipiv); free(a));
 
-    x = make_matrix(a, n, n, 0);
+done:
+    /*                                                  */ free(ipiv);
+    x = make_matrix(info ? NULL : a, n, n, n, 0);
     /*                                                              */ free(a);
     return x;
 }
@@ -732,8 +837,8 @@ qml_mm(K x, K y) {
     I a_m, a_n, b_m, b_n;
     F *a, *b, *r;
 
-    bubble_error(take_matrix(x, &a, &a_m, &a_n, NULL),                        );
-    bubble_error(take_matrix(y, &b, &b_m, &b_n, &b_column),            free(a));
+    bubble_error(take_matrix(x, &a, &a_m, &a_m, &a_n, NULL),                  );
+    bubble_error(take_matrix(y, &b, &b_m, &b_m, &b_n, &b_column),      free(a));
     check_length(a_n == b_m,                                  free(b); free(a));
     alloc(r, add_size(0, a_m, b_n),                           free(b); free(a));
 
@@ -748,7 +853,7 @@ qml_mm(K x, K y) {
                     a_m, b_n, a_n, 1, a, a_m, b, b_m, 0, r, a_m);
 
     /*                                                     */ free(b); free(a);
-    x = make_matrix(r, a_m, b_n, b_column);
+    x = make_matrix(r, a_m, a_m, b_n, b_column);
     /*                                            */ free(r);
     return x;
 }
@@ -758,15 +863,17 @@ qml_mm(K x, K y) {
 K QML_EXPORT
 qml_ms(K x, K y) {
     int a_triangular, b_column;
-    I a_n, b_m, b_n;
-    F* a, *b;
+    I a_n, b_m, b_n, info;
+    F *a, *b;
 
     bubble_error(take_square_matrix(x, &a, &a_n, &a_triangular),              );
     check(a_triangular, krr(ss("domain")),                             free(a));
-    repeat (i, a_n)
-        check(a[i + i*a_n] != 0, ktn(0, 0),                            free(a));
+    bubble_error(take_matrix(y, &b, &b_m, &b_m, &b_n, &b_column),      free(a));
+    check_length(a_n == b_m,                                  free(b); free(a));
 
-    bubble_error(take_matrix(y, &b, &b_m, &b_n, &b_column),            free(a));
+    for (info = a_n; info; info--)
+        if (a[(info-1) + (info-1)*a_n] == 0)
+            goto done;
 
     if (b_n == 1)
         cblas_dtrsv(CblasColMajor,
@@ -777,8 +884,9 @@ qml_ms(K x, K y) {
                     a_triangular > 0 ? CblasUpper : CblasLower,
                     CblasNoTrans, CblasNonUnit, b_m, b_n, 1, a, a_n, b, b_m);
 
+done:
     /*                                                              */ free(a);
-    x = make_matrix(b, b_m, b_n, b_column);
+    x = make_matrix(info ? NULL : b, b_m, b_m, b_n, b_column);
     /*                                                     */ free(b);
     return x;
 }
@@ -799,19 +907,21 @@ qml_mevu(K x) {
 
     lwork = take_maxwork(maxwork);
     alloc(w, add_size(add_size(lwork, n, 2), n, n),                    free(a));
-    F *lr = w + lwork, *li = lr + n, *ev = li + n;
+    F *lr  = w  + lwork,
+      *li  = lr + n,
+      *ev  = li + n;
+   /* *end = ev + n*n */
 
     dgeev_("N", "V", &n, a, &n, lr, li,
            NULL, &n, ev, &n, w, &lwork, &info);
     /*                                                              */ free(a);
     check_lapack_return(info,                                 free(w);        );
-    check(!info, ktn(0, 0),                                   free(w);        );
 
     x = ktn(0, 2);
-    xK[0] = make_complex_vector(lr, li, n, 1);
+    xK[0] = make_complex_vector(info ? NULL : lr, info ? NULL : li, n, 1);
 
-    if (xK[0]->t) // no complex elements
-        xK[1] = make_matrix(ev, n, n, matrix_transpose);
+    if (xK[0]->t) // no complex elements (also when info)
+        xK[1] = make_matrix(info ? NULL : ev, n, n, n, matrix_transpose);
     else {
         xK[1] = ktn(0, n);
         repeat (j, n) {
@@ -825,7 +935,7 @@ qml_mevu(K x) {
                 }
                 j++;
             } else
-                kK(xK[1])[j] = make_vector(ev + j*n, n, 1);
+                kK(xK[1])[j] = make_vector(ev, j*n, n, 1);
         }
     }
 
@@ -844,21 +954,20 @@ qml_mchol(K x) {
 
     I info = clapack_dpotrf(CblasColMajor, CblasUpper, n, a, n);
     check_lapack_return(info,                                          free(a));
-    check(!info, ktn(0, 0),                                            free(a));
 
-    x = make_upper_matrix(a, n, n, n);
+    x = make_upper_matrix(info ? NULL : a, n, n, n);
     /*                                                              */ free(a);
     return x;
 }
 
 
-// QR factorization base
+// QR factorization
 static K
-qr(K x, int pivot) {
+mqr(K x, int pivot) {
     I n, m, min, info, lwork;
     F *a, *w, maxwork[2];
 
-    bubble_error(take_matrix(x, &a, &m, &n, matrix_alloc_square),             );
+    bubble_error(take_matrix(x, &a, &m, &m, &n, matrix_alloc_square),         );
 
     lwork = -1;
     if (pivot)
@@ -894,7 +1003,7 @@ qr(K x, int pivot) {
     check_lapack_return(info,     r0(r); if (pivot) r0(ipiv);          free(a));
 
     x = ktn(0, pivot ? 3 : 2);
-    xK[0] = make_matrix(a, m, m, 0);
+    xK[0] = make_matrix(a, m, m, m, 0);
     xK[1] = r;
     if (pivot)
         xK[2] = ipiv;
@@ -902,16 +1011,14 @@ qr(K x, int pivot) {
     return x;
 }
 
-// QR factorization
 K QML_EXPORT
 qml_mqr(K x) {
-    return qr(x, 0);
+    return mqr(x, 0);
 }
 
-// QR factorization with column pivoting
 K QML_EXPORT
 qml_mqrp(K x) {
-    return qr(x, 1);
+    return mqr(x, 1);
 }
 
 
@@ -921,7 +1028,7 @@ qml_mlup(K x) {
     I m, n, min, *ipiv;
     F* a;
 
-    bubble_error(take_matrix(x, &a, &m, &n, NULL),                            );
+    bubble_error(take_matrix(x, &a, &m, &m, &n, NULL),                        );
 
     min = min_i(m, n);
     alloc(ipiv, min,                                                   free(a));
@@ -951,40 +1058,48 @@ qml_mlup(K x) {
 // Singular value decomposition
 K QML_EXPORT
 qml_msvd(K x) {
-    I m, n, min, lwork, info;
+    I m, n, min, lwork, info, *iw;
     F *a, *w, maxwork;
 
-    bubble_error(take_matrix(x, &a, &m, &n, NULL),                            );
+    bubble_error(take_matrix(x, &a, &m, &m, &n, NULL),                        );
 
     min = min_i(m, n);
     lwork = -1;
-    dgesvd_("A", "A", &m, &n, NULL, &m, NULL, NULL, &m, NULL, &n,
-            &maxwork, &lwork, &info);
+    dgesdd_("A", &m, &n, NULL, &m, NULL, NULL, &m, NULL, &n,
+            &maxwork, &lwork, NULL, &info);
     check_lapack_return(info,                                          free(a));
 
     lwork = take_maxwork(maxwork);
     alloc(w, add_size(add_size(add_size(lwork, min, 1), m, m), n, n),  free(a));
-    F *s = w + lwork, *u = s + min, *vt = u + m * m;
+    F *s   = w  + lwork,
+      *u   = s  + min,
+      *vt  = u  + m * m;
+   /* *end = vt + n * n */
 
-    dgesvd_("A", "A", &m, &n, a, &m, s, u, &m, vt, &n, w, &lwork, &info);
-    /*                                                              */ free(a);
+    alloc(iw, add_size(0, min, 8),                            free(w); free(a));
+
+    dgesdd_("A", &m, &n, a, &m, s, u, &m, vt, &n, w, &lwork, iw, &info);
+    /*                                           */ free(iw);          free(a);
     check_lapack_return(info,                                 free(w);        );
-    check(!info, ktn(0, 0),                                   free(w);        );
 
     x = ktn(0, 3);
-    xK[0] = make_matrix(u, m, m, 0);
+    xK[0] = make_matrix(info ? NULL : u, m, m, m, 0);
     xK[1] = ktn(0, m);
     repeat (j, m) {
         F* q = kF(kK(xK[1])[j] = ktn(KF, n));
         repeat (i, n)
-            q[i] = i == j ? s[j] : 0;
+            q[i] = i == j ? info ? nf : s[j] : 0;
     }
-    xK[2] = make_matrix(vt, n, n, matrix_transpose);
+    xK[2] = make_matrix(info ? NULL : vt, n, n, n, matrix_transpose);
 
     /*                                                     */ free(w);
     return x;
 }
 
+
+//
+// Advanced matrix functions
+//
 
 // Polynomial root finding
 K QML_EXPORT
@@ -1078,88 +1193,121 @@ qml_poly(K x) {
 }
 
 
-//
-// Options processing
-//
+// Linear equations
+static K
+mls(K x, K y, int equi) {
+    char equed;
+    int b_column;
+    I a_n, b_m, b_n, info, *ipiv;
+    F *a, *b;
 
-struct opt {
-    const char* s;
-    I t; // 0 for boolean, -KI, or -KF
-};
+    bubble_error(take_square_matrix(x, &a, &a_n, NULL),                       );
+    bubble_error(take_matrix(y, &b, &b_m, &b_m, &b_n, &b_column),      free(a));
+    check_length(a_n == b_m,                                  free(b); free(a));
 
-union optv {
-    I i; /* first member */
-    F f;
-};
+    alloc(ipiv, add_size(0, a_n, 1 + equi),                   free(b); free(a));
 
-static int
-take_opt_get(K x, I i, int flat, const S s,
-             const struct opt* opt, union optv* v)
-{
-    check(s, 0,);
-    check(*s, 1,);
+    if (equi) {
+        F* bi = b;
+        alloc(b, add_size(add_size(add_size(add_size(0,
+                 a_n, b_n), a_n, a_n), a_n, 6), b_n, 2),
+                                                 free(ipiv); free(bi); free(a));
+        F *af   = b    + a_n*b_n, 
+          *r    = af   + a_n*a_n,
+          *c    = r    + a_n,
+          *w    = c    + a_n,
+          *ferr = w    + a_n*4,
+          *berr = ferr + b_n,
+       /* *end  = berr + b_n, */
+          rcond;
+        I* iw = ipiv + a_n;
 
-    I k;
-    for (k = 0; opt[k].s; k++)
-        if (!strcmp(s, opt[k].s))
-            goto found;
-    return 0;
+        dgesvx_("E", "N", &a_n, &b_n, a, &a_n, af, &a_n, ipiv, &equed, r, c,
+                bi, &b_m, b, &b_m, &rcond, ferr, berr, w, iw, &info);
+        /*                                                */ free(bi);
+    } else
+        dgesv_(&a_n, &b_n, a, &a_n, ipiv, b, &b_m, &info);
+    /*                                         */ free(ipiv);          free(a);
+    check_lapack_return(info,                                 free(b)         );
 
-found:
-    if (!opt[k].t && flat) {
-        v[k].i = 1;
-        return 1;
-    } else {
-        check(x && xt>=0 && i < xn, 0,);
-        if (opt[k].t==-KF) {
-            if (!xt) {
-                check(is_f(xK[i]), 0,);
-                v[k].f = as_f(xK[i]);
-            } else {
-                check(is_F(x), 0,);
-                v[k].f = item_F(x, i);
-            }
-        } else {
-            if (!xt) {
-                check(is_i(xK[i]), 0,);
-                v[k].i = as_i(xK[i]);
-            } else {
-                check(is_I(x), 0,);
-                v[k].i = item_I(x, i);
-            }
-        }
-        return 2;
-    }
+    x = make_matrix(info ? NULL : b, b_m, b_m, b_n, b_column);
+    /*                                                     */ free(b);
+    return x;
 }
 
-// Fills in an optv array
-static int // 1 on success
-take_opt(K x, const struct opt* opt, union optv* v) {
-    switch (xt) {
-    case 0:
-        repeat (i, xn) {
-            S s = xK[i]->t==-KS ? xK[i]->s : NULL;
-            int r = take_opt_get(x, i+1, 1, s, opt, v);
-            check(r, 0,);
-            i += r-1;
-        }
-        break;
-    case -KS:
-    case KS:
-        repeat (i, xt>0 ? xn    : 1) {
-            S s =  xt>0 ? xS[i] : xs;
-            check(take_opt_get(NULL, 0, 1, s, opt, v), 0,);
-        }
-        break;
-    case XD:
-        check(xx->t==KS || !xx->t, 0,);
-        repeat (i, xx->n) {
-            S s = xx->t==KS         ? kS(xx)[i] :
-                  kK(xx)[i]->t==-KS ? kK(xx)[i]->s : NULL;
-            check(take_opt_get(xy, i, 0, s, opt, v), 0,);
-        }
-    }
-    return 1;
+static const struct opt ls_opt[] = {
+    { "equi", 0 },
+    { NULL }
+};
+
+K QML_EXPORT
+qml_mlsx(K opts, K x, K y) {
+    union optv v[] = { { 0 } };
+    check(take_opt(opts, ls_opt, v), krr(ss("opt")),);
+    return mls(x, y, v[0].i);
+}
+
+K QML_EXPORT
+qml_mls(K x, K y) {
+    return mls(x, y, 0);
+}
+
+
+// Linear least squares
+static K
+mlsq(K x, K y, int svd) {
+    int b_column;
+    I a_m, a_n, b_m, b_n, ldb, rank, info, lwork, liwork, *iw;
+    F *a, *b, *w, maxwork, rcond = -1;
+
+    bubble_error(take_matrix(x, &a, &a_m, &a_m, &a_n, NULL),                  );
+    ldb = a_n;
+    bubble_error(take_matrix(y, &b, &ldb, &b_m, &b_n, &b_column),      free(a));
+    check_length(a_m == b_m,                                  free(b); free(a));
+
+    lwork = -1;
+    if (svd)
+        dgelsd_(&a_m, &a_n, &b_n, NULL, &a_m, NULL, &ldb,
+                NULL, &rcond, &rank, &maxwork, &lwork, &liwork, &info);
+    else
+        dgels_("N", &a_m, &a_n, &b_n, NULL, &a_m, NULL, &ldb,
+               &maxwork, &lwork, &info);
+    check_lapack_return(info,                                 free(b); free(a));
+
+    lwork = take_maxwork(maxwork);
+    alloc(w, add_size(lwork, min_i(a_m, a_n), svd),           free(b); free(a));
+    if (svd) {
+        F* s = w + lwork;
+        alloc(iw, liwork,                            free(w); free(b); free(a));
+        dgelsd_(&a_m, &a_n, &b_n, a, &a_m, b, &ldb,
+                s, &rcond, &rank, w, &lwork, iw, &info);
+        /*                              */ free(iw);
+    } else
+        dgels_("N", &a_m, &a_n, &b_n, a, &a_m, b, &ldb,
+               w, &lwork, &info);
+    /*                                            */ free(w); /*    */ free(a);
+    check_lapack_return(info,                                 free(b);        );
+
+    x = make_matrix(info ? NULL : b, ldb, a_n, b_n, b_column);
+    /*                                                     */ free(b);
+    return x;
+}
+
+static const struct opt lsq_opt[] = {
+    { "svd", 0 },
+    { NULL }
+};
+
+K QML_EXPORT
+qml_mlsqx(K opts, K x, K y) {
+    union optv v[] = { { 0 } };
+    check(take_opt(opts, lsq_opt, v), krr(ss("opt")),);
+    return mlsq(x, y, v[0].i);
+}
+
+K QML_EXPORT
+qml_mlsq(K x, K y) {
+    return mlsq(x, y, 0);
 }
 
 
@@ -1233,7 +1381,7 @@ make_param(K x, F* param, K* a) {
         repeat (i, xn)
             param = make_param(xK[i], param, &kK(*a)[i]);
     } else if (xt>0) {
-        *a = make_vector(param, xn, 1);
+        *a = make_vector(param, 0, xn, 1);
         param += xn;
     } else
         *a = kf(*param++);
@@ -1617,7 +1765,7 @@ K QML_EXPORT
 qml_solvex(K opts, K x, K y) {
     union optv v[] = { { 1000 }, { .f = -1 }, { -1 },
                        { 0 }, { 0 }, { 0 }, { 0 } };
-    check(take_opt(opts, solve_opt, v), krr(ss("opt")), 0);
+    check(take_opt(opts, solve_opt, v), krr(ss("opt")),);
     return solvemin(x, NULL, y, v[0].i, v[1].f, v[2].i,
                     v[3].i, v[4].i, 0, v[5].i, v[6].i);
 }
@@ -1684,7 +1832,7 @@ qml_rootx(K opts, K x, K y) {
 
 K QML_EXPORT
 qml_root(K x, K y) {
-    R qml_rootx(empty_con, x, y);
+    return qml_rootx(empty_con, x, y);
 }
 
 K QML_EXPORT

@@ -1,0 +1,28 @@
+--- ATLAS/CONFIG/src/probe_comp.c
++++ ATLAS/CONFIG/src/probe_comp.c
+@@ -619,7 +619,8 @@
+  *    If the user has not specified the compiler, look through all available
+  *    compilers with one that works (with user flags, if specified)
+  */
+-      if (!usrcomps[i])
++      /* Always look through list of compilers to find best flags. */
++      if (1)
+       {
+          for (p=comps[i]; p; p = p->next)
+          {
+@@ -628,6 +629,7 @@
+                flg = NewAppendedString(flg, usrcomps[NCOMP*2+i]);
+             sp = GetWinComp(OS, p->comp);
+             if (!sp) sp = p->comp;
++            if (usrcomps[i]) sp = usrcomps[i];
+             if (ptrbits)
+                flg = NewAppendedString(flg,
+                                        GetPtrbitsFlag(OS, arch, ptrbits, sp));
+@@ -639,6 +641,7 @@
+             CompError(i);
+          else
+             free(flg);
++         if (!usrcomps[i])
+          usrcomps[i] = p->comp;
+          p->comp = NULL;                /* so it isn't deleted by Kill */
+          if (!usrcomps[NCOMP+i])

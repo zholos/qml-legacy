@@ -44,6 +44,9 @@ real and imaginary parts.  E.g.:
     1 1.414214
     1 -1.414214
 
+    q).qml.mlsq[(1 1;1 2;1 3;1 4);11 2 -3 -4] / fit line
+    14 -5f
+
     q).qml.conmin[{x*y+1};{1-(x*x)+y*y};0 0]  / minimize x(y+1) s.t. x^2+y^2<=1
     -0.8660254 0.5
 
@@ -148,8 +151,15 @@ by Cygwin.  The build, just run make.  See the top of the Makefile for options.
                     (L; U; P), matrix[P]=L mm U
   msvd[matrix]    singular value decomposition: (U; Sigma; V)
 
-  poly[coef]      roots of a polynomial (highest-degree coefficient first, can
-                    be complex)
+  poly[coef]      roots of a polynomial (highest-degree coefficient first,
+                    can be complex)
+
+  mls[A;B]        solve B=A mm X
+  mlsx[opt;A;B]   mls[] with options
+                   `equi: equilibrate the system (default: don't)
+  mlsq[A;B]       solve min ||B-A mm X||
+  mlsqx[opt;A;B]  mlsq[] with options
+                   `svd:  use SVD algorithm      (default: QR or LQ)
 
   root[f;(x0;x1)]         find root on interval (f(x0)f(x1)<1)
   rootx[opt;f;(x0;x1)]    root[] with options (as dictionary or mixed list)

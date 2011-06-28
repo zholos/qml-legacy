@@ -18,3 +18,9 @@ g;}
     s/[^ ].*/JOBCOMPZ(1) = JOB/p
     s/[^ ].*/JOBCOMPZ(2) = COMPZ/p
 g;}
+
+
+# Similarly, replace 2**X by equivalent bit shifts, so that calls to
+# _gfortran_pow_i4_i4 aren't emitted.
+
+s/ 2 *\*\* *\([[:alnum:]]*\|([^)]*)\) *$/ ISHFT(1,\1)/

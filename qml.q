@@ -12,9 +12,9 @@
                 `mdet`minv`mevu`mchol`mqr`mqrp`mlup`msvd`poly`const;
             `atan2`pow`hypot`fmod`beta`pgammar`pgammarc`ipgammarc,
                 `c2cdf`c2icdf`stcdf`sticdf`pscdf`psicdf`smcdf`smicdf`mm`ms,
-                `solve`min`root;
+                `mls`mlsq`solve`min`root;
             `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf`bncdf`bnicdf,
-                `solvex`minx`rootx`conmin`line;
+                `mlsx`mlsqx`solvex`minx`rootx`conmin`line;
             `conminx`linex));
 
 version:const 0;pi:const 1;e:const 2;eps:const 3;

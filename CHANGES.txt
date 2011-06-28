@@ -1,3 +1,9 @@
+Version 0.3.5 on 2011-06-28:
+  * Added 'mls'/'mlsx' and 'mlsq'/'mlsqx' functions.
+  * A matrix of null values is now returned instead of an empty list in case of
+    singular input to 'minv' and 'ms', non-positive-definite input to 'mchol',
+    and computation failure in 'mev' and 'msvd'.
+
 Version 0.3.4 on 2011-06-26:
   * The system libm is used instead of FDLIBM.
   * ATLAS is now the default and only option. CLAPACK is replaced with Fortran
