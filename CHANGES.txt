@@ -1,3 +1,6 @@
+Version 0.1.5 on 2009-10-06:
+  * Preliminary support for OpenSolaris.
+
 Version 0.1.4 on 2009-10-05:
   * Fix thread safety, which is required for 'peach'.
 

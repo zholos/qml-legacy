@@ -49,12 +49,22 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
         endif
       else
         ifeq "$(shell uname -s)" "SunOS"
-          ifeq "$(shell uname -m)" "x86_64"
-            $(error s64 platform is currently not supported)
-            PLATFORM=s64
+          ifneq "$(findstring i386,$(shell isainfo))" ""
+            ifeq "$(shell isainfo -b)" "64"
+              $(error v64 platform is currently not supported)
+              PLATFORM=v64
+            else
+              $(error v32 platform is currently not supported)
+              PLATFORM=v32
+            endif
           else
-            $(error s32 platform is currently not supported)
-            PLATFORM=s32
+            ifeq "$(shell isainfo -b)" "64"
+              $(error s64 platform is currently not supported)
+              PLATFORM=s64
+            else
+              $(error s32 platform is currently not supported)
+              PLATFORM=s32
+            endif
           endif
         else
           $(error couldn't determine platform, please set PLATFORM variable)
@@ -65,7 +75,8 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
 endif
 $(info Platform:   $(PLATFORM))
 
-PLATFORMCLASS=$(patsubst %64,%,$(patsubst %32,%,$(PLATFORM)))
+PLATFORMCLASS=$(patsubst v,s,$(patsubst %64,%,$(patsubst %32,%,$(PLATFORM))))
+
 
 # Toolchain
 #   mssdk:
@@ -139,6 +150,7 @@ else
         CFLAGS+= -fPIC
     endif
     ifeq "$(PLATFORMCLASS)" "m"
+        # Darwin flags
         ifeq "$(PLATFORM)" "m64"
             CFLAGS+= -m64
         endif
@@ -146,9 +158,10 @@ else
         ENVFLAGS=MACOSX_DEPLOYMENT_TARGET=10.4
     else
         ifeq "$(PLATFORMCLASS)" "s"
-            SOFLAGS=-G -Wl,-s
+            # OpenSolaris flags
+            SOFLAGS=-G -Wl,-s,-Bsymbolic
         else
-            # default
+            # default flags
             ifneq "$(PLATFORMCLASS)" "w"
                 CFLAGS+= -fvisibility=hidden
             endif
@@ -160,6 +173,9 @@ else
     ccdll=$(ENVFLAGS) $(CC) $(DEFINES) $(4) $(CFLAGS) $(SOFLAGS)
     ifeq "$(PLATFORMCLASS)" "m"
         ccdll+= -exported_symbols_list $(1).symlist
+    endif
+    ifeq "$(PLATFORMCLASS)" "s"
+        ccdll+= -Wl,-M,$(1).mapfile
     endif
     ccdll+= -o $(1).$(DLLEXT) $(2) $(3)
 endif
@@ -402,7 +418,7 @@ else
 	    -e 's/\([^_[:alnum:]]\)cc\([^_[:alnum:]]\)/\1$$(CC)\2/' \
 	    -e 's/\([^_[:alnum:]]\)ld\([^_[:alnum:]]\)/\1$$(LD)\2/' \
 	    -e 's/\([^_[:alnum:]]\)ar\([^_[:alnum:]]\)/\1$$(ARCH)\2/' \
-            -e 's/\([^_[:alnum:]]\)ranlib\([^_[:alnum:]]\)/\1$$(RANLIB)\2/' \
+	    -e 's/\([^_[:alnum:]]\)ranlib\([^_[:alnum:]]\)/\1$$(RANLIB)\2/' \
 	    clapack/F2CLIBS/libf2c/Makefile
       ifeq "$(PLATFORMCLASS)" "w"
 	sed -i.tmp -e 's/\([^_[:alnum:]]\)a\.out/\1a.exe/g' \
@@ -513,7 +529,7 @@ endif
 
 
 # Build QML
-VERSION=0.1.4
+VERSION=0.1.5
 CONFIG=-DQML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
     CONFIG+= -DQML_R_POLY
@@ -535,14 +551,17 @@ endif
 LIBS+=lib/cephes.$(LIBEXT) lib/fdlibm.$(LIBEXT)
 LIBS+=lib/clapack.$(LIBEXT) lib/blas.$(LIBEXT) lib/f2c.$(LIBEXT)
 
-ifeq "$(TOOLCHAIN)" "mssdk"
-ifeq "$(PLATFORM)" "w64"
-    lib/compat.c:
-	mkdir -p lib && echo "void __fastcall __GSHandlerCheck() {}\
+ifeq "$(PLATFORM):$(TOOLCHAIN)" "w64:mssdk"
+    build/compat.c:
+	mkdir -p build && echo "void __fastcall __GSHandlerCheck() {}\
 	    void __fastcall __security_check_cookie(unsigned* p) {}\
-	    unsigned* __security_cookie;" >"$@"
-    SOURCES+= lib/compat.c
+	    unsigned* __security_cookie;" >'$@'
+    SOURCES+= build/compat.c
 endif
+ifeq "$(PLATFORMCLASS)" "s"
+    build/compat.c:
+	mkdir -p build && echo "int MAIN__() { return 0; }" >'$@'
+    SOURCES+= build/compat.c
 endif
 
 build/qml.symlist: qml.c
@@ -553,7 +572,11 @@ build/qml.symlist: qml.c
 	    -e 'H;};$${s/.*//;x;s/[[:space:]]\{1,\}/ /g;s/^ //;s/ $$//;x;G;:a' \
 	    -e 's/^\(.\)\([^ ]*\) /\1\2\1/;t a' -e 's/^.//p;}' '$<' >'$@'
 
-build/qml.$(DLLEXT): $(SOURCES) $(LIBS) build/qml.symlist
+build/qml.mapfile: build/qml.symlist
+	{ echo '{ global:'; sed -e 's/^_/    /;s/$$/;/' '$<'; \
+	    echo '  local: *; };'; } >'$@'
+
+build/qml.$(DLLEXT): $(SOURCES) $(LIBS) build/qml.mapfile build/qml.symlist
 	mkdir -p build
 	cd build && $(call ccdll,qml,\
 	    $(patsubst %,../%,$(filter-out %.h,$(SOURCES))),\
