@@ -1338,7 +1338,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 
 
 // Constants
-#define QUOTE1(x) (#x)
+#define QUOTE1(x) #x
 #define QUOTE(x) QUOTE1(x)
 
 K QML_EXPORT qml_const(K x) {

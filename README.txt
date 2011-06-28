@@ -6,8 +6,6 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes, LAPACK and CONMAX libraries.
 
-This is version 0.3.1 of the Q Math Library.
-
 
 2. Licensing
 

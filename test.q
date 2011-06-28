@@ -1,4 +1,5 @@
 \l qml.q
+-1"QML ",string .qml.version;
 pass:passed:total:0;
 mttests:enlist[`]!enlist();
 run:$[syss:8<=system"s";{v:value x;if[reps=0;:v];if[0=type x:parse x;if[-11=type x 0;mttests[x 0],:enlist((eval x 0;eval each 1_x);v;reps;prec);:v]];'`qml_assert};value];
