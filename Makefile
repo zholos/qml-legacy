@@ -158,11 +158,16 @@ else
         EXEEXT=
         CFLAGS+= -fPIC
     endif
+    ifneq "$(findstring $(PLATFORMCLASS),m s)" ""
+        # explicit binary type on Darwin and OpenSolaris
+        ifeq "$(patsubst %64,,$(PLATFORM))" ""
+            CFLAGS+= -m64
+        else
+            CFLAGS+= -m32
+        endif
+    endif
     ifeq "$(PLATFORMCLASS)" "m"
         # Darwin flags
-        ifeq "$(PLATFORM)" "m64"
-            CFLAGS+= -m64
-        endif
         SOFLAGS=-bundle -undefined dynamic_lookup -nodefaultlibs -Wl,-x
         ENVFLAGS=MACOSX_DEPLOYMENT_TARGET=10.4
     else
@@ -171,15 +176,15 @@ else
             SOFLAGS=-G -Wl,-s,-Bsymbolic
         else
             # default flags
-            ifneq "$(PLATFORMCLASS)" "w"
-                CFLAGS+= -fvisibility=hidden
-            endif
             SOFLAGS=-shared -Wl,-s,-Bsymbolic
         endif
     endif
     cc=$(CC) $(DEFINES) $(2) $(CFLAGS) -c $(1)
     ar=$(AR) r $(1).$(LIBEXT) $(2)
     ccdll=$(ENVFLAGS) $(CC) $(DEFINES) $(4) $(CFLAGS) $(SOFLAGS)
+    ifeq "$(PLATFORMCLASS)" "l"
+        ccdll+= -Wl,--version-script,$(1).mapfile
+    endif
     ifeq "$(PLATFORMCLASS)" "m"
         ccdll+= -exported_symbols_list $(1).symlist
     endif
@@ -439,7 +444,8 @@ else
 	    clapack/F2CLIBS/libf2c/Makefile
       endif
       ifneq "$(findstring $(PLATFORMCLASS),m s)" ""
-	sed -i.tmp -e '/\$$(LD)/s/ -x / /' clapack/F2CLIBS/libf2c/Makefile
+	sed -i.tmp -e '/\$$(LD) .*\.xxx/d;/mv .*\.xxx/d' \
+	    clapack/F2CLIBS/libf2c/Makefile
 	sed -i.tmp 's,\./test[a-z]*,:,g' clapack/Makefile
 	sed -i.tmp '/-o  *test[a-z]* /d' clapack/INSTALL/Makefile
       endif
@@ -546,7 +552,7 @@ endif
 
 
 # Build QML
-VERSION=0.1.6
+VERSION=0.1.7
 CONFIG=QML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
     CONFIG+= QML_R_POLY

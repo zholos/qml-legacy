@@ -6,7 +6,7 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is version 0.1.6 of the Q Math Library.  Only Windows, 32-bit Linux and
+This is version 0.1.7 of the Q Math Library.  Only Windows, 32-bit Linux and
 32-bit Darwin are currently supported, but the source code and build system
 are designed to be portable.
 
