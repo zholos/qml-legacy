@@ -7,8 +7,11 @@
 #   gpl:
 #     Based on GPL software: Cephes from LabPlot distribution under GPL, cpoly
 #     from R distribution under GPL.  However, the result may not be
-#     distributed under the GPL because the q library is neither compatible,
-#     nor a system library (it's not normally distributed with KDB+).
+#     distributed under the GPL because the q import library is neither
+#     compatible in license, nor a system library (it's not normally
+#     distributed with KDB+).  Additionally, the result may not be distributed
+#     under the GPL with intent to link at runtime to q itself, which is not
+#     open-source.
 #
 #   bsd:
 #     Cephes from Netlib, which has a note allowing free use.  poly implemented
@@ -34,7 +37,7 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
   else
     ifeq "$(shell uname -s)" "Linux"
       ifeq "$(shell uname -m)" "x86_64"
-        $(error l64 platform is currently not supported)
+        $(warning l64 platform is currently not supported)$(shell sleep 3)
         PLATFORM=l64
       else
         PLATFORM=l32
@@ -42,7 +45,7 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
     else
       ifeq "$(shell uname -s)" "Darwin"
         ifeq "$(shell uname -m)" "x86_64"
-          $(error m64 platform is currently not supported)
+          $(warning m64 platform is currently not supported)$(shell sleep 5)
           PLATFORM=m64
         else
           PLATFORM=m32
@@ -51,18 +54,18 @@ ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
         ifeq "$(shell uname -s)" "SunOS"
           ifneq "$(findstring i386,$(shell isainfo))" ""
             ifeq "$(shell isainfo -b)" "64"
-              $(error v64 platform is currently not supported)
+              $(warning v64 platform is currently not supported)$(shell sleep 5)
               PLATFORM=v64
             else
-              $(error v32 platform is currently not supported)
+              $(warning v32 platform is currently not supported)$(shell sleep 5)
               PLATFORM=v32
             endif
           else
             ifeq "$(shell isainfo -b)" "64"
-              $(error s64 platform is currently not supported)
+              $(warning s64 platform is currently not supported)$(shell sleep 5)
               PLATFORM=s64
             else
-              $(error s32 platform is currently not supported)
+              $(warning s32 platform is currently not supported)$(shell sleep 5)
               PLATFORM=s32
             endif
           endif
@@ -114,12 +117,15 @@ ifeq "$(TOOLCHAIN)" "mssdk"
     OBJEXT=obj
     LIBEXT=lib
     DLLEXT=dll
+    EXEEXT=.exe
     CFLAGS+= -Ox -Oi-
     DEFINES+= -D__STDC__ -DWIN32 -D_USE_MATH_DEFINES
     cc=$(CL) $(DEFINES) $(2) $(CFLAGS) -c $(patsubst %,'%',$(1))
     ar=$(LINK) -lib -out:$(1).$(LIBEXT) $(patsubst %,'%',$(2))
     ccdll=$(CL) $(DEFINES) $(4) $(CFLAGS) -LD $(patsubst %,'%',$(2)) \
-          -link $(patsubst %,'%',$(3)) -out:$(1).$(DLLEXT)
+        -link $(patsubst %,'%',$(3)) -out:$(1).$(DLLEXT)
+    ccexe=$(CL) $(DEFINES) $(4) $(CFLAGS) $(patsubst %,'%',$(2)) \
+        -link $(patsubst %,'%',$(3)) -out:$(1)$(EXEEXT)
 else
     TOOLPREPEND=
     ifneq "$(TOOLPREFIX)" ""
@@ -139,14 +145,17 @@ else
     OBJEXT=o
     LIBEXT=a
     CFLAGS+= -std=gnu99 -O2 -fno-strict-aliasing -pipe
-    CFLAGS+= -Wall -Wno-parentheses -Wno-uninitialized
     # -fstrict-aliasing breaks fdlibm
+    CFLAGS+= -fno-builtin-sin -fno-builtin-cos
+    CFLAGS+= -Wall -Wno-parentheses -Wno-uninitialized
     ENVFLAGS=
     ifeq "$(PLATFORMCLASS)" "w"
         DLLEXT=dll
+        EXEEXT=.exe
         CFLAGS+= -mno-cygwin
     else
         DLLEXT=so
+        EXEEXT=
         CFLAGS+= -fPIC
     endif
     ifeq "$(PLATFORMCLASS)" "m"
@@ -177,7 +186,9 @@ else
     ifeq "$(PLATFORMCLASS)" "s"
         ccdll+= -Wl,-M,$(1).mapfile
     endif
-    ccdll+= -o $(1).$(DLLEXT) $(2) $(3)
+    ccdll+= -o $(1).$(DLLEXT) $(patsubst %,'%',$(2)) $(patsubst %,'%',$(3))
+    ccexe=$(ENVFLAGS) $(CC) $(DEFINES) $(4) $(CFLAGS) -o $(1)$(EXEEXT) \
+        $(patsubst %,'%',$(2)) $(patsubst %,'%',$(3))
 endif
 
 
@@ -364,7 +375,7 @@ ifeq "$(TOOLCHAIN)" "mssdk"
 	mkdir -p lib && cp -f '$<' '$@'
 else
     include/k.h: download/k.h
-	mkdir -p qlib && sed -e '/#define  *isnan/d;$${p;s/.*//;}' '$<' >'$@'
+	mkdir -p include && sed -e '/#define  *isnan/d;$${p;s/.*//;}' '$<' >'$@'
 
     qlib/q.orig.lib: download/$(PLATFORM)/q.lib
 	mkdir -p qlib && cp -f '$<' '$@'
@@ -387,6 +398,9 @@ endif
 # Build CLAPACK libraries
 ifeq "$(TOOLCHAIN)" "mssdk"
     $(error This configuration is currently not thread-safe)
+
+    include/f2c.h: download/f2c.h
+	mkdir -p include && cp -f '$<' '$@'
 
     include/clapack.h: download/clapack.h
 	mkdir -p include && cp -f '$<' '$@'
@@ -451,6 +465,9 @@ else
 	cp -f clapack/INCLUDE/blaswrap.h clapack/SRC
 	cd clapack && make blaslib lapacklib
 	touch '$@'
+
+    include/f2c.h: clapack/.built
+	mkdir -p include && cp -f clapack/INCLUDE/f2c.h '$@'
 
     include/clapack.h: clapack/.built
 	mkdir -p include && cp -f clapack/INCLUDE/clapack.h '$@'
@@ -529,20 +546,21 @@ endif
 
 
 # Build QML
-VERSION=0.1.5
-CONFIG=-DQML_VERSION=$(VERSION)
+VERSION=0.1.6
+CONFIG=QML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
-    CONFIG+= -DQML_R_POLY
+    CONFIG+= QML_R_POLY
 else
   ifeq "$(BUILD)" "bsd"
-    CONFIG+= -DQML_LAPACK_POLY
+    CONFIG+= QML_LAPACK_POLY
   endif
 endif
 
-SOURCES=qml.c include/fdlibm.h include/k.h include/clapack.h
+SOURCES=qml.c include/fdlibm.h include/k.h include/f2c.h include/clapack.h
+SOURCES+= include/config.h
 LIBS=
 ifeq "$(PLATFORMCLASS)" "w"
-    CONFIG+= -DQML_DLLEXPORT
+    CONFIG+= QML_DLLEXPORT
     LIBS+= lib/q.$(LIBEXT)
 endif
 ifneq "$(BUILD)" "bsd"
@@ -550,6 +568,29 @@ ifneq "$(BUILD)" "bsd"
 endif
 LIBS+=lib/cephes.$(LIBEXT) lib/fdlibm.$(LIBEXT)
 LIBS+=lib/clapack.$(LIBEXT) lib/blas.$(LIBEXT) lib/f2c.$(LIBEXT)
+
+build/config.c:
+	mkdir -p build
+	{ echo '#include <stdio.h>'; echo '#include <k.h>'; \
+	    echo '#include <f2c.h>'; echo 'int main(){\
+	        if(sizeof(I)>=sizeof(integer)) {\
+		    puts("#define QML_kLONG(x) ((integer*)kI(x))"); \
+		    puts("#define QML_KLONG KI");\
+		} else if(sizeof(J)>=sizeof(integer)) {\
+		    puts("#define QML_kLONG(x) ((integer*)kJ(x))"); \
+		    puts("#define QML_KLONG KJ");\
+		} else return 1;return 0;}'; } >'$@'
+
+build/config$(EXEEXT): build/config.c include/k.h include/f2c.h
+	cd build && $(call ccexe,config,config.c,,-I../include)
+
+build/config.h: build/config$(EXEEXT)
+	'$<' >'$@'
+	$(foreach define,$(CONFIG),\
+	    echo '#define $(subst =, ,$(define))' >>'$@' &&) :
+
+include/config.h: build/config.h
+	mkdir -p include && cp -f '$<' '$@'
 
 ifeq "$(PLATFORM):$(TOOLCHAIN)" "w64:mssdk"
     build/compat.c:
@@ -581,7 +622,7 @@ build/qml.$(DLLEXT): $(SOURCES) $(LIBS) build/qml.mapfile build/qml.symlist
 	cd build && $(call ccdll,qml,\
 	    $(patsubst %,../%,$(filter-out %.h,$(SOURCES))),\
 	    $(patsubst %,../%,$(LIBS)),\
-	    -I../include $(CONFIG))
+	    -I../include)
 
 $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)
 	mkdir -p '$(PLATFORM)' && cp -pf '$<' '$@'

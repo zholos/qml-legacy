@@ -1,3 +1,5 @@
+#include <config.h>
+
 #undef QML_DLLMAIN
 #if defined(QML_DLLEXPORT) && !defined(__GNUC__)
     #define QML_DLLMAIN
@@ -5,10 +7,20 @@
 
 #include <string.h>
 #include <float.h>
+
 #include <fdlibm.h>
+
 #ifdef QML_DLLMAIN
     #include <windows.h>
 #endif
+
+#undef min
+#undef max
+#undef small
+#undef large
+#include <f2c.h>
+#include <clapack.h>
+
 #include <k.h>
 
 #undef QML_EXPORT
@@ -235,9 +247,22 @@ WRAPniif(fcdf,fdtr)WRAPniif(ficdf,ficdf)
 WRAPnff(c2cdf,chdtr)WRAPnff(c2icdf,c2icdf)
 WRAPnfff(gcdf,gcdf)WRAPnfff(gicdf,gicdf)
 
+// Utility functions
+Z integer min_i(I x, I y) {
+    R x<=y ? x : y;
+}
+
+Z integer max_i(I x, I y) {
+    R x>=y ? x : y;
+}
+
+ZV swap_i(I* x, I* y) {
+    I v = *x; *x = *y; *y = v;
+}
+
 // Make new F vector out of square matrix argument, column-major order
-ZK mfms(K x, I *n, char **err) {
-    I j;
+ZK mfms(K x, integer *n, char **err) {
+    integer j;
     K f, r;
     if (xt!=0 || (*n=xn)==0)
         { *err="type"; R 0; }
@@ -247,29 +272,29 @@ ZK mfms(K x, I *n, char **err) {
             { r0(r); *err="type"; R 0; }
         if (f->t<0 || f->n!=*n)
             { r0(f); r0(r); *err="length"; R 0; }
-        DO(*n, kF(r)[*n*i+j]=kF(f)[i])
+        DO(*n, kF(r)[*n*i+j] = kF(f)[i])
         r0(f);
     }
     R r;
 }
 
 // Make new F vector out of matrix argument, column-major order
-ZK mfm(K x, I *n, I *m, char **err) {
-    I j;
+ZK mfm(K x, integer *m, integer *n, char **err) {
+    integer j;
     K f, r;
-    if (xt!=0 || (*n=xn)==0 || (f=mf(xK[0]))==0)
+    if (xt!=0 || (*m=xn)==0 || (f=mf(xK[0]))==0)
         { *err="type"; R 0; }
-    if (f->t<0 || (*m=f->n)==0)
+    if (f->t<0 || (*n=f->n)==0)
         { r0(f); *err="length"; R 0; }
-    r = ktn(KF, *n**m);
-    for (j=0; j<*n; ++j) {
+    r = ktn(KF, *m**n);
+    for (j=0; j<*m; ++j) {
         if (j!=0) {
             if ((f=mf(xK[j]))==0)
                 { r0(r); *err="type"; R 0; }
-            if (f->t<0 || f->n!=*m)
+            if (f->t<0 || f->n!=*n)
                 { r0(f); r0(r); *err="length"; R 0; }
         }
-        DO(*m, kF(r)[*n*i+j]=kF(f)[i])
+        DO(*n, kF(r)[*m*i+j] = kF(f)[i])
         r0(f);
     }
     R r;
@@ -285,38 +310,33 @@ ZK mcv(F a, F b) {
 }
 
 // Matrix determinant
-int dgetrf_(int *m, int *n, double *a, int *lda, int* ipiv, int *info);
-
 K QML_EXPORT qml_mdet(K x) {
     char* err;
-    I j, n;
+    integer j, n;
     F r;
     K ipiv;
     x = mfms(x, &n, &err);
     P(x==0, krr(ss(err)))
 
-    ipiv = ktn(KI, n);
-    dgetrf_(&n, &n, kF(x), &n, kI(ipiv), &j);
+    ipiv = ktn(QML_KLONG, n);
+    dgetrf_(&n, &n, kF(x), &n, QML_kLONG(ipiv), &j);
     if (j!=0)
         { r0(ipiv); r0(x); R j>0 ? kf(0) : krr(ss("qml_assert")); }
 
     j = 0;
-    DO(n, j+=kI(ipiv)[i]!=i+1);
+    DO(n, j += QML_kLONG(ipiv)[i]!=i+1);
     r0(ipiv);
 
     r = j%2 ? -1 : 1;
-    DO(n, r*=kF(x)[i*n+i])
+    DO(n, r *= kF(x)[i*n+i])
     r0(x);
     R kf(r);
 }
 
 // Matrix inverse
-int dgetri_(int *n, double *a, int *lda, int *ipiv, double *work, int *lwork,
-    int *info);
-
 K QML_EXPORT qml_minv(K x) {
     char* err;
-    I j, n, lwork;
+    integer j, n, lwork;
     F maxwork;
     K ipiv, work, a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
@@ -325,17 +345,15 @@ K QML_EXPORT qml_minv(K x) {
     dgetri_(&n, NULL, &n, NULL, &maxwork, &lwork, &j);
     if (j!=0)
         { r0(a); R krr(ss("qml_assert")); }
-    lwork = (I)(maxwork+.5);
-    if (lwork<n)
-        lwork = n;
+    lwork = max_i((integer)(maxwork+.5), n);
 
-    ipiv = ktn(KI, n);
-    dgetrf_(&n, &n, kF(a), &n, kI(ipiv), &j);
+    ipiv = ktn(QML_KLONG, n);
+    dgetrf_(&n, &n, kF(a), &n, QML_kLONG(ipiv), &j);
     if (j!=0)
         { r0(ipiv); r0(a); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     work = ktn(KF, lwork);
-    dgetri_(&n, kF(a), &n, kI(ipiv), kF(work), &lwork, &j);
+    dgetri_(&n, kF(a), &n, QML_kLONG(ipiv), kF(work), &lwork, &j);
     r0(work); r0(ipiv);
     if (j!=0)
         { r0(a); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
@@ -343,19 +361,15 @@ K QML_EXPORT qml_minv(K x) {
     x = ktn(0, n);
     for (j=0; j<n; ++j) {
         xK[j] = ktn(KF, n);
-        DO(n, kF(xK[j])[i]=kF(a)[i*n+j])
+        DO(n, kF(xK[j])[i] = kF(a)[i*n+j])
     }
     r0(a); R x;
 }
 
 // Eigenvalues and eigenvectors
-int dgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
-    double *wr, double* wi_, double *vl, int *ldvl, double *vr, int *ldvr,
-    double *work, int *lwork, int *info);
-
 K QML_EXPORT qml_mevu(K x) {
     char* err;
-    I j, n, lwork;
+    integer j, n, lwork;
     F maxwork;
     K f, a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
@@ -365,9 +379,7 @@ K QML_EXPORT qml_mevu(K x) {
         NULL, &n, &maxwork, &lwork, &j);
     if (j!=0)
         { r0(a); R krr(ss("qml_assert")); }
-    lwork = (I)(maxwork+.5);
-    if (lwork<(j=4*n))
-        lwork = j;
+    lwork = max_i((integer)(maxwork+.5), 4*n);
 
     f = ktn(KF, n*2 + n*n + lwork);
     dgeev_("N", "V", &n, kF(a), &n, kF(f), kF(f)+n, NULL, &n,
@@ -380,34 +392,34 @@ K QML_EXPORT qml_mevu(K x) {
     xK[1] = ktn(0, n);
     for (j=0; j<n; ++j)
         if (kF(f)[n+j]!=0)
-            goto complex;
+            goto complex_result;
 
-/*real:*/
+/*real_result:*/
     xK[0] = ktn(KF, n);
     for (j=0; j<n; ++j)
         kF(xK[0])[j] = kF(f)[j];
     for (j=0; j<n; ++j) {
         kK(xK[1])[j] = ktn(KF, n);
-        DO(n, kF(kK(xK[1])[j])[i]=kF(f)[n*2+j*n+i])
+        DO(n, kF(kK(xK[1])[j])[i] = kF(f)[n*2+j*n+i])
     }
     goto done;
 
-complex:
+complex_result:
     xK[0] = ktn(0, n);
     for (j=0; j<n; ++j)
         kK(xK[0])[j] = mcv(kF(f)[j], kF(f)[n+j]);
     for (j=0; j<n; ++j) {
         if (kF(f)[n+j]!=0 && j+1<n) {
             kK(xK[1])[j] = ktn(0, n);
-            DO(n, kK(kK(xK[1])[j])[i]=
+            DO(n, kK(kK(xK[1])[j])[i] =
                 mcv(kF(f)[n*2+j*n+i], kF(f)[n*2+(j+1)*n+i]))
             kK(xK[1])[j+1] = ktn(0, n);
-            DO(n, kK(kK(xK[1])[j+1])[i]=
+            DO(n, kK(kK(xK[1])[j+1])[i] =
                 mcv(kF(f)[n*2+j*n+i], -kF(f)[n*2+(j+1)*n+i]))
             ++j;
         } else {
             kK(xK[1])[j] = ktn(KF, n);
-            DO(n, kF(kK(xK[1])[j])[i]=kF(f)[n*2+j*n+i])
+            DO(n, kF(kK(xK[1])[j])[i] = kF(f)[n*2+j*n+i])
         }
     }
 
@@ -416,11 +428,9 @@ done:
 }
 
 // Cholesky decomposition
-int dpotrf_(char *uplo, int *n, double *a, int *lda, int *info);
-
 K QML_EXPORT qml_mchol(K x) {
     char* err;
-    I j, n;
+    integer j, n;
     K a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
 
@@ -431,74 +441,154 @@ K QML_EXPORT qml_mchol(K x) {
     x = ktn(0, n);
     for (j=0; j<n; ++j) {
         xK[j] = ktn(KF, n);
-        /*DO(j+1, kF(xK[j])[i]=kF(a)[i*n+j])
-        DO(n-(j+1), kF(xK[j])[j+1+i]=0)*/
-        DO(j, kF(xK[j])[i]=0)
-        DO(n-j, kF(xK[j])[j+i]=kF(a)[(j+i)*n+j])
+        /*DO(j+1, kF(xK[j])[i] = kF(a)[i*n+j])
+        DO(n-(j+1), kF(xK[j])[j+1+i] = 0)*/
+        DO(j, kF(xK[j])[i] = 0)
+        DO(n-j, kF(xK[j])[j+i] = kF(a)[(j+i)*n+j])
     }
     r0(a); R x;
 }
 
-// Singular value decomposition
-int dgesvd_(char *jobu, char *jobvt, int *m, int *n, double *a, int *lda,
-    double *s, double *u, int *ldu, double *vt, int *ldvt, double *work,
-    int *lwork, int *info);
-
-K QML_EXPORT qml_msvd(K x) {
+// QR factorization
+K QML_EXPORT qml_mqr(K x) {
     char* err;
-    I j, n, m, min, lwork;
-    F maxwork;
-    K f, a = mfm(x, &n, &m, &err);
+    integer j, k, n, m, min, lwork;
+    F maxwork, *q;
+    K f, a = mfm(x, &m, &n, &err);
     P(a==0, krr(ss(err)))
 
-    min = m < n ? m : n;
+    min = min_i(m, n);
     lwork = -1;
-    dgesvd_("A", "A", &n, &m, NULL, &n, NULL, NULL, &n,
-        NULL, &m, &maxwork, &lwork, &j);
+    dgeqrf_(&m, &n, NULL, &m, NULL, &maxwork, &lwork, &j);
     if (j!=0)
         { r0(a); R krr(ss("qml_assert")); }
-    lwork = (I)(maxwork+.5);
-    if (lwork<(j=3*min+n+m))
-        lwork = j;
+    j = (integer)(maxwork+.5);
+    dorgqr_(&m, &m, &min, NULL, &m, NULL, &maxwork, &lwork, &k);
+    if (k!=0)
+        { r0(a); R krr(ss("qml_assert")); }
+    k = (integer)(maxwork+.5);
+    lwork = max_i(max_i(j, k), n);
 
-    f = ktn(KF, min + n*n + m*m + lwork);
-    dgesvd_("A", "A", &n, &m, kF(a), &n, kF(f), kF(f)+min, &n,
-        kF(f)+min+n*n, &m, kF(f)+min+n*n+m*m, &lwork, &j);
+    f = ktn(KF, min + lwork + (n<m ? m*m : 0));
+    dgeqrf_(&m, &n, kF(a), &m, kF(f), kF(f)+min, &lwork, &j);
+    if (j!=0)
+        { r0(f); r0(a); R krr(ss("qml_assert")); }
+
+    x = ktn(0, 2);
+    xK[0] = ktn(0, m);
+    xK[1] = ktn(0, m);
+    for (j=0; j<m; ++j) {
+        kK(xK[1])[j] = ktn(KF, n);
+        if (j<min) {
+            DO(j, kF(kK(xK[1])[j])[i] = 0)
+            DO(n-j, kF(kK(xK[1])[j])[j+i] = kF(a)[(j+i)*m+j])
+        } else
+            DO(n, kF(kK(xK[1])[j])[i] = 0)
+    }
+
+    if (n<m) {
+        q = kF(f)+min+lwork;
+        for (j=0; j<m; ++j)
+            DO(n, q[i*m+j] = kF(a)[i*m+j])
+    } else
+        q = kF(a);
+    dorgqr_(&m, &m, &min, q, &m, kF(f), kF(f)+min, &lwork, &j);
+    if (j!=0)
+        { r0(f); r0(a); r0(x); R krr(ss("qml_assert")); }
+
+    for (j=0; j<m; ++j) {
+        kK(xK[0])[j] = ktn(KF, m);
+        DO(m, kF(kK(xK[0])[j])[i] = q[i*m+j])
+    }
+    r0(f); r0(a); R x;
+}
+
+// LUP factorization
+K QML_EXPORT qml_mlup(K x) {
+    char* err;
+    integer j, m, n, min;
+    K ipiv, a = mfm(x, &m, &n, &err);
+    P(a==0, krr(ss(err)))
+
+    min = min_i(m, n);
+    ipiv = ktn(QML_KLONG, min);
+    dgetrf_(&m, &n, kF(a), &m, QML_kLONG(ipiv), &j);
+    if (j<0)
+        { r0(a); R krr(ss("qml_assert")); }
+
+    x = ktn(0, 3);
+    xK[0] = ktn(0, m);
+    for (j=0; j<m; ++j) {
+        kK(xK[0])[j] = ktn(KF, min);
+        if (j<min) {
+            DO(j, kF(kK(xK[0])[j])[i] = kF(a)[i*m+j])
+            kF(kK(xK[0])[j])[j] = 1;
+            DO(min-(j+1), kF(kK(xK[0])[j])[j+1+i] = 0)
+        } else
+            DO(min, kF(kK(xK[0])[j])[i] = kF(a)[i*m+j])
+    }
+    xK[1] = ktn(0, min);
+    for (j=0; j<min; ++j) {
+        kK(xK[1])[j] = ktn(KF, n);
+        DO(j, kF(kK(xK[1])[j])[i] = 0)
+        DO(n-j, kF(kK(xK[1])[j])[j+i] = kF(a)[(j+i)*m+j])
+    }
+    xK[2] = ktn(KI, m);
+    DO(m, kI(xK[2])[i] = i)
+    DO(min, swap_i(kI(xK[2])+i, kI(xK[2])+(QML_kLONG(ipiv)[i]-1)))
+    r0(ipiv); r0(a); R x;
+}
+
+// Singular value decomposition
+K QML_EXPORT qml_msvd(K x) {
+    char* err;
+    integer j, m, n, min, lwork;
+    F maxwork;
+    K f, a = mfm(x, &m, &n, &err);
+    P(a==0, krr(ss(err)))
+
+    min = min_i(m, n);
+    lwork = -1;
+    dgesvd_("A", "A", &m, &n, NULL, &m, NULL, NULL, &m,
+        NULL, &n, &maxwork, &lwork, &j);
+    if (j!=0)
+        { r0(a); R krr(ss("qml_assert")); }
+    lwork = max_i((integer)(maxwork+.5), 3*min+m+n);
+
+    f = ktn(KF, min + m*m + n*n + lwork);
+    dgesvd_("A", "A", &m, &n, kF(a), &m, kF(f), kF(f)+min, &m,
+        kF(f)+min+m*m, &n, kF(f)+min+m*m+n*n, &lwork, &j);
     r0(a);
     if (j!=0)
         { r0(f); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, 3);
-    xK[0] = ktn(0, n);
-    for (j=0; j<n; ++j) {
-        kK(xK[0])[j] = ktn(KF, n);
-        DO(n, kF(kK(xK[0])[j])[i]=kF(f)[min+i*n+j])
+    xK[0] = ktn(0, m);
+    for (j=0; j<m; ++j) {
+        kK(xK[0])[j] = ktn(KF, m);
+        DO(m, kF(kK(xK[0])[j])[i] = kF(f)[min+i*m+j])
     }
-    xK[1] = ktn(0, n);
-    for (j=0; j<n; ++j) {
-        kK(xK[1])[j] = ktn(KF, m);
-        DO(m, kF(kK(xK[1])[j])[i]=0)
+    xK[1] = ktn(0, m);
+    for (j=0; j<m; ++j) {
+        kK(xK[1])[j] = ktn(KF, n);
+        DO(n, kF(kK(xK[1])[j])[i] = 0)
         if (j<min)
             kF(kK(xK[1])[j])[j] = kF(f)[j];
     }
-    xK[2] = ktn(0, m);
-    for (j=0; j<m; ++j) {
-        kK(xK[2])[j] = ktn(KF, m);
-        DO(m, kF(kK(xK[2])[j])[i]=kF(f)[min+n*n+j*m+i])
+    xK[2] = ktn(0, n);
+    for (j=0; j<n; ++j) {
+        kK(xK[2])[j] = ktn(KF, n);
+        DO(n, kF(kK(xK[2])[j])[i] = kF(f)[min+m*m+j*n+i])
     }
     r0(f); R x;
 }
 
 
 // Polynomial root finding
-#ifdef QML_LAPACK_POLY
-    int zgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
-        double *w, double *vl, int *ldvl, double *vr, int *ldvr,
-        double *work, int *lwork, double* rwork, int *info);
-#elif defined(QML_R_POLY)
+#ifdef QML_R_POLY
     void R_cpolyroot(double *opr, double *opi, int *degree, double *zeror,
         double *zeroi, int *fail, double* work);
-#else
+#elif !defined(QML_LAPACK_POLY)
     int cpoly_(double *opr, double* opi, long* degree,
         double *zeror, double* zeroi, long* fail);
     int rpoly_(double *op, long* degree,
@@ -506,19 +596,19 @@ K QML_EXPORT qml_msvd(K x) {
 #endif
 
 K QML_EXPORT qml_poly(K x) {
-    I j, n;
+    integer j, n;
 #ifndef QML_R_POLY
     I complex;
 #endif
     K a, c, r;
 #ifdef QML_LAPACK_POLY
     F d, maxwork[2];
-    I lwork;
+    integer lwork;
     K work;
 #elif defined(QML_R_POLY)
     K work;
 #else
-    I k;
+    integer k;
 #endif
 
     if ((a=mf(x))==0) {
@@ -548,8 +638,8 @@ K QML_EXPORT qml_poly(K x) {
         if (a->n==0)
             { r0(a); R krr(ss("length")); }
         c = ktn(KF, (n=a->n)*2);
-        DO(n, kF(c)[i]=kF(a)[i])
-        DO(n, kF(c)[n+i]=0)
+        DO(n, kF(c)[i] = kF(a)[i])
+        DO(n, kF(c)[n+i] = 0)
         r0(a);
 #ifndef QML_R_POLY
         complex = 0;
@@ -579,33 +669,33 @@ K QML_EXPORT qml_poly(K x) {
         lwork = -1;
         if (complex)
             zgeev_("N", "N", &n, NULL, &n, NULL, NULL, &n,
-                NULL, &n, maxwork, &lwork, NULL, &j);
+                NULL, &n, (doublecomplex*)maxwork, &lwork, NULL, &j);
         else
             dgeev_("N", "N", &n, NULL, &n, NULL, NULL, NULL, &n,
                 NULL, &n, maxwork, &lwork, &j);
         if (j!=0)
             { r0(c); r0(a); R krr(ss("qml_assert")); }
-        lwork = (I)(maxwork[0]+.5);
-        if (lwork<(j=(complex?2:3)*n))
-            lwork = j;
+        lwork = max_i((integer)(maxwork[0]+.5), (complex?2:3)*n);
 
         if (complex) {
             work = ktn(KF, 2*n*n + 2*lwork + 2*n);
-            DO(2*n*n, kF(work)[i]=0)
+            DO(2*n*n, kF(work)[i] = 0)
             for (j=0; j<n; ++j) {
                 kF(work)[2*j*n] =
                     -(kF(c)[n+j+2]*kF(c)[n+1]+kF(c)[j+1]*kF(c)[0])/d;
                 kF(work)[2*j*n+1] =
                     (kF(c)[j+1]*kF(c)[n+1]-kF(c)[n+j+2]*kF(c)[0])/d;
             }
-            DO(n-1, kF(work)[2*(i*(n+1)+1)]=1)
-            zgeev_("N", "N", &n, kF(work), &n, kF(a), NULL, &n,
-                NULL, &n, kF(work)+2*n*n, &lwork, kF(work)+2*n*n+2*lwork, &j);
+            DO(n-1, kF(work)[2*(i*(n+1)+1)] = 1)
+            zgeev_("N", "N", &n, (doublecomplex*)kF(work), &n,
+                (doublecomplex*)kF(a), NULL, &n, NULL, &n,
+                (doublecomplex*)(kF(work)+2*n*n), &lwork,
+                kF(work)+2*n*n+2*lwork, &j);
         } else {
             work = ktn(KF, n*n + lwork);
-            DO(n*n, kF(work)[i]=0)
-            DO(n, kF(work)[i*n]=-kF(c)[i+1]/d)
-            DO(n-1, kF(work)[i*(n+1)+1]=1)
+            DO(n*n, kF(work)[i] = 0)
+            DO(n, kF(work)[i*n] = -kF(c)[i+1]/d)
+            DO(n-1, kF(work)[i*(n+1)+1] = 1)
             dgeev_("N", "N", &n, kF(work), &n, kF(a), kF(a)+n, NULL, &n,
                 NULL, &n, kF(work)+n*n, &lwork, &j);
         }
@@ -643,9 +733,6 @@ K QML_EXPORT qml_poly(K x) {
 
 
 // Initialization
-double slamch_(char*);
-double dlamch_(char*);
-
 static int initialized = 0;
 
 #ifndef QML_DLLMAIN

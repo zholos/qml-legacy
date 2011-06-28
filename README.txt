@@ -6,8 +6,9 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is version 0.1.5 of the Q Math Library.  Only Windows, 32-bit Linux and
-32-bit Darwin are currently supported.
+This is version 0.1.6 of the Q Math Library.  Only Windows, 32-bit Linux and
+32-bit Darwin are currently supported, but the source code and build system
+are designed to be portable.
 
 
 2. Licensing
@@ -37,7 +38,7 @@ real and imaginary parts.  E.g.:
     q).qml.ncdf .25 .5 .75            / quartiles of a normal distribution
     -0.6744898 0 0.6744898
 
-    q).qml.mchol (1 2 1;2 5 4;1 4 6)  / Cholesky decomposition
+    q).qml.mchol (1 2 1;2 5 4;1 4 6)  / Cholesky factorization
     1 2 1
     0 1 2
     0 0 1
@@ -51,11 +52,12 @@ It's recommended to run the test suite, test.q, to make sure that everything
 is working correctly.
 
 To rebuild the library, use the Makefile, which is for GNU make.  There are
-configuration options near the top.  On Windows, rebuilding requires Cygwin,
-but the native C compiler may be used instead of GCC.  On other platforms, GCC
-version 4 is recommended.  Although only tested on 32-bit Linux, it will
-probably build on anything GNU-like with a few tweaks, but make sure to run
-the test suite.
+configuration options near the top.  On Windows, rebuilding requires Cygwin or
+another GNU environment.  On other platforms, GCC version 4 is recommended.
+Although only tested on the platforms for which binaries are included, it
+should compile on any platform with a few tweaks.  If you rebuild the library,
+make sure to run the test suite before using it.  If you're so inclined,
+please contact the author to report both problems and successful builds.
 
 
 4. Constants and functions
@@ -128,7 +130,9 @@ the test suite.
   minv[matrix]    inverse
   mpinv[matrix]   pseudoinverse
   mev[matrix]     (eigenvalues; eigenvectors) sorted by decreasing modulus
-  mchol[matrix]   Cholesky decomposition upper matrix
+  mchol[matrix]   Cholesky factorization upper matrix
+  mqr[matrix]     QR factorization: (Q; R)
+  mlup[matrix]    LUP factorization: (L; U; P), matrix[P]=L mmu U
   msvd[matrix]    singular value decomposition: (U; Sigma; V)
 
   poly[coef]      roots of a polynomial (highest-degree coefficient first, can

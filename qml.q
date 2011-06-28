@@ -4,7 +4,7 @@
     2:(`$"qml_",string y;x)}[x]'[y]}'[1 2 3;(
     `sin`cos`tan`asin`acos`atan`sinh`cosh`tanh`asinh`acosh`atanh`exp`expm1,
     `log`log10`logb`log1p`sqrt`cbrt`floor`ceil`fabs`erf`erfc`lgamma`gamma,
-    `j0`j1`y0`y1`ncdf`nicdf`mdet`minv`mevu`mchol`msvd`poly`const;
+    `j0`j1`y0`y1`ncdf`nicdf`mdet`minv`mevu`mchol`mqr`mlup`msvd`poly`const;
     `atan2`pow`hypot`fmod`beta`pgammar`pgammarc`ipgammarc,
     `c2cdf`c2icdf`stcdf`sticdf;
     `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf)];
