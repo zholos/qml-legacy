@@ -1,15 +1,23 @@
+#undef QML_DLLMAIN
+#if defined(QML_DLLEXPORT) && !defined(__GNUC__)
+    #define QML_DLLMAIN
+#endif
+
 #include <string.h>
 #include <float.h>
 #include <fdlibm.h>
+#ifdef QML_DLLMAIN
+    #include <windows.h>
+#endif
 #include <k.h>
 
-#undef EXPORT
-#ifdef DLLEXPORT
-    #define EXPORT __declspec(dllexport)
-#elif defined(SOEXPORT) && __GNUC__>=4
-    #define EXPORT __attribute__ ((visibility("default")))
+#undef QML_EXPORT
+#ifdef QML_DLLEXPORT
+    #define QML_EXPORT __declspec(dllexport)
+#elif __GNUC__>=4
+    #define QML_EXPORT __attribute__((visibility("default")))
 #else
-    #define EXPORT
+    #define QML_EXPORT
 #endif
 
 
@@ -102,7 +110,7 @@ Z K1(mf) {
 // Wrap a function of F
 #define WRAPf(ff) WRAPnf(ff,ff)
 #define WRAPnf(ffn,ff) \
-K EXPORT qml_##ffn(K u) { \
+K QML_EXPORT qml_##ffn(K u) { \
     K x = mf(u); \
     P(x==0, krr(ss("type"))); \
     SW(xt) { \
@@ -114,7 +122,7 @@ K EXPORT qml_##ffn(K u) { \
 
 // Wrap a function of (F; F)
 #define WRAPff(ff) \
-K EXPORT qml_##ff(K u, K v) { \
+K QML_EXPORT qml_##ff(K u, K v) { \
     K x, y; \
     P(!(u->t<0 || v->t<0 || u->n==v->n), krr(ss("length"))) \
     x = mf(u); P(x==0, krr(ss("type"))) \
@@ -134,28 +142,28 @@ K EXPORT qml_##ff(K u, K v) { \
 
 // Wrap a function of (F; F)
 #define WRAPnff(ffn,ff) \
-K EXPORT qml_##ffn(K u, K v) { \
+K QML_EXPORT qml_##ffn(K u, K v) { \
     P(!mf1p(u) || !mf1p(v), krr(ss("type"))) \
     R kf(ff(mf1f(u), mf1f(v))); \
 }
 
 // Wrap a function of (I; F)
 #define WRAPnif(ffn,ff) \
-K EXPORT qml_##ffn(K u, K v) { \
+K QML_EXPORT qml_##ffn(K u, K v) { \
     P(!mi1p(u) || !mf1p(v), krr(ss("type"))) \
     R kf(ff(mi1i(u), mf1f(v))); \
 }
 
 // Wrap a function of (F; F; F)
 #define WRAPnfff(ffn,ff) \
-K EXPORT qml_##ffn(K u, K v, K w) { \
+K QML_EXPORT qml_##ffn(K u, K v, K w) { \
     P(!mf1p(u) || !mf1p(v) || !mf1p(w), krr(ss("type"))) \
     R kf(ff(mf1f(u), mf1f(v), mf1f(w))); \
 }
 
 // Wrap a function of (I; I; F)
 #define WRAPniif(ffn,ff) \
-K EXPORT qml_##ffn(K u, K v, K w) { \
+K QML_EXPORT qml_##ffn(K u, K v, K w) { \
     P(!mi1p(u) || !mi1p(v) || !mf1p(w), krr(ss("type"))) \
     R kf(ff(mi1i(u), mi1i(v), mf1f(w))); \
 }
@@ -189,12 +197,12 @@ extern double chdtri(double, double);
 
 // this is not available in all distributions of Cephes so we provide it here
 F beta(F x, F y) {
-    I s;
+    I sx, sy, sxy;
     F r;
-    r = lgamma(x); s = signgam;
-    r += lgamma(y); s *= signgam;
-    r -= lgamma(x + y); s *= signgam;
-    R s*exp(r);
+    r = lgamma_r(x, &sx);
+    r += lgamma_r(y, &sy);
+    r -= lgamma_r(x + y, &sxy);
+    R sx*sy*sxy*exp(r);
 }
 
 // chdtri returns the inverse of the complementary CDF
@@ -279,7 +287,7 @@ ZK mcv(F a, F b) {
 // Matrix determinant
 int dgetrf_(int *m, int *n, double *a, int *lda, int* ipiv, int *info);
 
-K EXPORT qml_mdet(K x) {
+K QML_EXPORT qml_mdet(K x) {
     char* err;
     I j, n;
     F r;
@@ -306,7 +314,7 @@ K EXPORT qml_mdet(K x) {
 int dgetri_(int *n, double *a, int *lda, int *ipiv, double *work, int *lwork,
     int *info);
 
-K EXPORT qml_minv(K x) {
+K QML_EXPORT qml_minv(K x) {
     char* err;
     I j, n, lwork;
     F maxwork;
@@ -345,7 +353,7 @@ int dgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
     double *wr, double* wi_, double *vl, int *ldvl, double *vr, int *ldvr,
     double *work, int *lwork, int *info);
 
-K EXPORT qml_mevu(K x) {
+K QML_EXPORT qml_mevu(K x) {
     char* err;
     I j, n, lwork;
     F maxwork;
@@ -410,7 +418,7 @@ done:
 // Cholesky decomposition
 int dpotrf_(char *uplo, int *n, double *a, int *lda, int *info);
 
-K EXPORT qml_mchol(K x) {
+K QML_EXPORT qml_mchol(K x) {
     char* err;
     I j, n;
     K a = mfms(x, &n, &err);
@@ -436,7 +444,7 @@ int dgesvd_(char *jobu, char *jobvt, int *m, int *n, double *a, int *lda,
     double *s, double *u, int *ldu, double *vt, int *ldvt, double *work,
     int *lwork, int *info);
 
-K EXPORT qml_msvd(K x) {
+K QML_EXPORT qml_msvd(K x) {
     char* err;
     I j, n, m, min, lwork;
     F maxwork;
@@ -483,11 +491,11 @@ K EXPORT qml_msvd(K x) {
 
 
 // Polynomial root finding
-#ifdef USE_LAPACK_POLY
+#ifdef QML_LAPACK_POLY
     int zgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
         double *w, double *vl, int *ldvl, double *vr, int *ldvr,
         double *work, int *lwork, double* rwork, int *info);
-#elif defined(USE_R_POLY)
+#elif defined(QML_R_POLY)
     void R_cpolyroot(double *opr, double *opi, int *degree, double *zeror,
         double *zeroi, int *fail, double* work);
 #else
@@ -497,17 +505,17 @@ K EXPORT qml_msvd(K x) {
         double *zeror, double* zeroi, long* fail);
 #endif
 
-K EXPORT qml_poly(K x) {
+K QML_EXPORT qml_poly(K x) {
     I j, n;
-#ifndef USE_R_POLY
+#ifndef QML_R_POLY
     I complex;
 #endif
     K a, c, r;
-#ifdef USE_LAPACK_POLY
+#ifdef QML_LAPACK_POLY
     F d, maxwork[2];
     I lwork;
     K work;
-#elif defined(USE_R_POLY)
+#elif defined(QML_R_POLY)
     K work;
 #else
     I k;
@@ -531,7 +539,7 @@ K EXPORT qml_poly(K x) {
             }
             r0(a);
         }
-#ifndef USE_R_POLY
+#ifndef QML_R_POLY
         complex = 1;
 #endif
     } else {
@@ -543,11 +551,11 @@ K EXPORT qml_poly(K x) {
         DO(n, kF(c)[i]=kF(a)[i])
         DO(n, kF(c)[n+i]=0)
         r0(a);
-#ifndef USE_R_POLY
+#ifndef QML_R_POLY
         complex = 0;
 #endif
     }
-#ifdef USE_R_POLY
+#ifdef QML_R_POLY
     if (n > 50) /* matches constant in cpoly.c */
 #else
     if (n > (complex ? 50 : 100)) /* matches constants in cpoly.c and rpoly.c */
@@ -557,7 +565,7 @@ K EXPORT qml_poly(K x) {
     --n;
 
     a = ktn(KF, n*2);
-#ifdef USE_LAPACK_POLY
+#ifdef QML_LAPACK_POLY
     /* compute roots as the eigenvalues of the companion matrix */
     if (complex)
         d = kF(c)[0]*kF(c)[0] + kF(c)[n+1]*kF(c)[n+1];
@@ -605,7 +613,7 @@ K EXPORT qml_poly(K x) {
         if (j<0)
             { r0(c); r0(a); R krr(ss("roots")); }
     }
-#elif defined(USE_R_POLY)
+#elif defined(QML_R_POLY)
     work = ktn(KF, 10*(n+1)); /* matches expression in cpoly.c */
     R_cpolyroot(kF(c), kF(c)+n+1, &n, kF(a), kF(a)+n, &j, kF(work));
     r0(work);
@@ -624,7 +632,7 @@ K EXPORT qml_poly(K x) {
         { r0(a); R krr(ss("roots")); }
     r = ktn(0, n);
     for (j=0; j<n; ++j)
-#ifdef USE_LAPACK_POLY
+#ifdef QML_LAPACK_POLY
         if (complex)
             kK(r)[j] = mcv(kF(a)[j*2], kF(a)[j*2+1]);
         else
@@ -634,15 +642,41 @@ K EXPORT qml_poly(K x) {
 }
 
 
+// Initialization
+double slamch_(char*);
+double dlamch_(char*);
+
+static int initialized = 0;
+
+#ifndef QML_DLLMAIN
+__attribute__ ((constructor))
+#endif
+ZV initialize() {
+    // these functions are only thread-unsafe on their first invocation
+    slamch_("E");
+    dlamch_("E");
+    initialized = 1;
+}
+
+#ifdef QML_DLLMAIN
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+    if (fdwReason == DLL_PROCESS_ATTACH)
+        initialize();
+    return TRUE;
+}
+#endif
+
+
 // Constants
 #define QUOTE1(x) (#x)
 #define QUOTE(x) QUOTE1(x)
 
-K EXPORT qml_const(K x) {
+K QML_EXPORT qml_const(K x) {
     F r;
+    P(!initialized, krr(ss("qml_assert"))) // catch possibly missed init here
     P(xt!=-KI, krr(ss("type")))
     SW(xi) {
-        CS(0,R ks(QUOTE(VERSION)))
+        CS(0,R ks(QUOTE(QML_VERSION)))
         CS(1,r=3.1415926535897932384626433832795028842)
         CS(2,r=2.7182818284590452353602874713526624978)
         CS(3,r=DBL_EPSILON)

@@ -88,7 +88,7 @@ endif
 
 
 # Compiler and flags
-DEFINES=-D_IEEE_LIBM -D__LITTLE_ENDIAN
+DEFINES=-D_IEEE_LIBM -D__LITTLE_ENDIAN -D_REENTRANT
 CFLAGS=
 
 ifeq "$(TOOLCHAIN)" "mssdk"
@@ -182,8 +182,8 @@ else
     CLAPACK_LIB_SUBDIR=LIB_WINDOWS/Win32
 endif
 F2C_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/libf2c.lib
-BLAS_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/BLAS.lib
-CLAPACK_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/clapack.lib
+BLAS_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/BLAS_nowrap.lib
+CLAPACK_LIB=$(CLAPACK_DIR)/$(CLAPACK_LIB_SUBDIR)/clapack_nowrap.lib
 CLAPACK_SRC=$(CLAPACK_DIR)/clapack.tgz
 #   f2c program
 F2C_BIN_GZ=http://www.netlib.org/f2c/mswin/f2c.exe.gz
@@ -199,7 +199,7 @@ Q_LIB=$(Q_DIR)/$(PLATFORM)/q.lib
 
 
 # Main build target
-.PHONY: all cleanpart clean distclean dist install
+.PHONY: all test cleanpart clean distclean dist install
 all: $(PLATFORM)/qml.$(DLLEXT)
 
 
@@ -300,25 +300,30 @@ endif
 cephes/.patched: cephes/.extracted
 	sed -i.tmp -e '/#[[:space:]]*define[[:space:]]\{1,\}UNK/d' \
 	    -e '$${p;s/.*/#define IBMPC 1/;}' cephes/mconf.h
-	sed -i.tmp -e '/( *!isfinite(x) *)/s//(x==INFINITY||x==-INFINITY)/' \
-	    cephes/gamma.c
 	sed -i.tmp -e 's/erf/c_erf/g' \
 	    -e '1{h;s/.*/extern double c_erf(double), c_erfc(double);/p;g;}' \
 	    cephes/ndtr.c
 	sed -i.tmp -e 's/y01/y0/g;/double igami(/{N;N;N;N;N;' \
 	    -e 's/$$/if(y0>.5||y0<=0)return(NAN);/;}' cephes/igami.c
-	mv -f cephes/const.c cephes/const.c_
 	for file in cephes/*.h; do \
 	    sed -i.tmp -e 's/true_gamma/gamma/g' "$$file"; done
-	for file in cephes/*.c; do \
+	for file in $(filter-out %/const.c,$(wildcard cephes/*.c)); do \
 	    sed -i.tmp -e 's/true_gamma/gamma/g' \
 	    -e 's/char st\{0,1\}\[\]="[[:alnum:]][[:alnum:]]*";//' \
 	    -e 's/mtherr( *["sf][^,]*,[^)]*)/return(NAN)/' \
 	    -e '1{h;s/.*/extern double NAN;/p;g;}' "$$file"; done
-	mv -f cephes/const.c_ cephes/const.c
+	sed -i.tmp -n -e 'H;$${x;' \
+	    -e 's/( *!isfinite(x) *)/(x==INFINITY||x==-INFINITY)/g' \
+	    -e 's/\(extern  *\)\{0,1\}int  *sgngam[^;]*;//g' \
+	    -e 's/double  *gamma([^)]*)[^;][^{]*{/&int sgngam;/g' \
+	    -e 's/double  *lgam([^)]*)[^;][^{]*{/&int sgngam;/g' \
+	    -e 'p;}' cephes/gamma.c
+	if test -e cephes/cmath.h; then \
+	    sed -i.tmp -e 's/extern  *int  *sgngam;//' cephes/cmath.h; fi
 	if test -e cephes/simq.c; then \
 	    sed -i.tmp -e 's/printf([^)]*) *;//' cephes/simq.c; fi
 	rm -f cephes/{floor,log,atan,pow,exp,lmdif,mtherr,mod2pi,dtestvec}.c
+	rm -f cephes/{beta,jv}.c
     ifeq "$(PLATFORM)" "w32"
 	rm -f cephes/setprec.c
     endif
@@ -365,6 +370,8 @@ endif
 
 # Build CLAPACK libraries
 ifeq "$(TOOLCHAIN)" "mssdk"
+    $(error This configuration is currently not thread-safe)
+
     include/clapack.h: download/clapack.h
 	mkdir -p include && cp -f '$<' '$@'
 
@@ -383,6 +390,9 @@ else
 	touch '$@'
 
     clapack/.patched: clapack/.extracted
+	# thread-safety fix:
+	sed -i.tmp '/equiv_/s/static//g' clapack/SRC/{s,d}laln2.c
+	
 	{ cat clapack/make.inc.example;  echo 'PLAT=_$(PLATFORM)'; \
 	    echo 'CC=$(CC) -DNO_BLAS_WRAP'; echo 'CFLAGS=$(CFLAGS)'; \
 	    echo 'NOOPT=$$(CFLAGS) -O0'; echo 'LOADOPTS=$$(CFLAGS)'; \
@@ -445,6 +455,8 @@ endif
 
 # Build cpoly
 ifeq "$(BUILD)" "gpl"
+    $(error This configuration is currently not thread-safe)
+
     cpoly/cpoly.c: download/cpoly.c
 	mkdir -p cpoly && cp -f '$<' '$@'
 	sed -i.tmp -e 's/Rboolean *\*fail/int *fail, double* work/' \
@@ -501,23 +513,21 @@ endif
 
 
 # Build QML
-VERSION=0.1.3
-CONFIG=-DVERSION=$(VERSION)
+VERSION=0.1.4
+CONFIG=-DQML_VERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
-    CONFIG+= -DUSE_R_POLY
+    CONFIG+= -DQML_R_POLY
 else
   ifeq "$(BUILD)" "bsd"
-    CONFIG+= -DUSE_LAPACK_POLY
+    CONFIG+= -DQML_LAPACK_POLY
   endif
 endif
 
 SOURCES=qml.c include/fdlibm.h include/k.h include/clapack.h
 LIBS=
 ifeq "$(PLATFORMCLASS)" "w"
-    CONFIG+= -DDLLEXPORT
+    CONFIG+= -DQML_DLLEXPORT
     LIBS+= lib/q.$(LIBEXT)
-else
-    CONFIG+= -DSOEXPORT
 endif
 ifneq "$(BUILD)" "bsd"
     LIBS+= lib/cpoly.$(LIBEXT)
@@ -552,6 +562,9 @@ build/qml.$(DLLEXT): $(SOURCES) $(LIBS) build/qml.symlist
 
 $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)
 	mkdir -p '$(PLATFORM)' && cp -pf '$<' '$@'
+
+test: all
+	q test.q -s 16
 
 
 # Create distributable archive

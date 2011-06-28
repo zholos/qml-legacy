@@ -6,7 +6,7 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is version 0.1.3 of the Q Math Library.  Only Windows, 32-bit Linux and
+This is version 0.1.4 of the Q Math Library.  Only Windows, 32-bit Linux and
 32-bit Darwin are currently supported.
 
 
@@ -115,8 +115,7 @@ the test suite.
   ncdf[x]                 CDF of normal distribution
   nicdf[p]        inverse CDF of normal distribution
   c2cdf[k;x]              CDF of chi-squared distribution (k>=1,x>=0)
-  c2icdf[k;p]     inverse CDF of chi-squared distribution
-                            (k>=1,p>=.5)
+  c2icdf[k;p]     inverse CDF of chi-squared distribution (k>=1,p>=.5)
   stcdf[k;x]              CDF of Student's t-distribution (natural k)
   sticdf[k;p]     inverse CDF of Student's t-distribution (natural k)
   fcdf[d1;d2;x]           CDF of F-distribution (d1,d2>=1,x>=0)

@@ -8,10 +8,8 @@
     `atan2`pow`hypot`fmod`beta`pgammar`pgammarc`ipgammarc,
     `c2cdf`c2icdf`stcdf`sticdf;
     `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf)];
-version:const 0;
-pi:const 1;
-e:const 2;
-eps:const 3;
+
+version:const 0;pi:const 1;e:const 2;eps:const 3;
 pgamma:{gamma[x]*pgammar[x;y]};
 pgammac:{gamma[x]*pgammarc[x;y]};
 pbeta:{beta[x;y]*pbetar[x;y;z]};
