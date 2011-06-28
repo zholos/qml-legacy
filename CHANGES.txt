@@ -1,3 +1,15 @@
+Version 0.3.4 on 2011-06-26:
+  * The system libm is used instead of FDLIBM.
+  * ATLAS is now the default and only option. CLAPACK is replaced with Fortran
+    LAPACK. A Fortran compiler is required to build.
+  * Two-argument scalar functions are now only threaded over a vector in the
+    second argument, but not in the first, except 'atan2', 'pow', 'fmod',
+    'hypot' and 'beta', which are threaded over both arguments. Three-argument
+    functions are now threaded over a vector in the third argument.
+  * Coefficients supplied to 'poly' must be either atoms or two-element vectors
+    representing complex numbers. One-element vectors are not accepted.
+  * Bytes (type "x") are no longer accepted for any numeric arguments.
+
 Version 0.3.3 on 2011-06-13:
   * Added 'mm' and 'ms' functions.
 
