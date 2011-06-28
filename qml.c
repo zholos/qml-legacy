@@ -1,8 +1,17 @@
-#include <math.h>
+#include <string.h>
 #include <float.h>
 #include <fdlibm.h>
-#include <stdio.h>
 #include <k.h>
+
+#undef EXPORT
+#ifdef DLLEXPORT
+    #define EXPORT __declspec(dllexport)
+#elif defined(SOEXPORT)
+    #define EXPORT __attribute__ ((visibility("default")))
+#else
+    #define EXPORT
+#endif
+
 
 // Return 1 if argument can be converted to I atom
 ZI mi1p(K x) {
@@ -93,7 +102,7 @@ Z K1(mf) {
 // Wrap a function of F
 #define WRAPf(ff) WRAPnf(ff,ff)
 #define WRAPnf(ffn,ff) \
-K __declspec(dllexport) qml_##ffn(K u) { \
+K EXPORT qml_##ffn(K u) { \
     K x = mf(u); \
     P(x==0, krr(ss("type"))); \
     SW(xt) { \
@@ -105,7 +114,7 @@ K __declspec(dllexport) qml_##ffn(K u) { \
 
 // Wrap a function of (F; F)
 #define WRAPff(ff) \
-K __declspec(dllexport) qml_##ff(K u, K v) { \
+K EXPORT qml_##ff(K u, K v) { \
     K x, y; \
     P(!(u->t<0 || v->t<0 || u->n==v->n), krr(ss("length"))) \
     x = mf(u); P(x==0, krr(ss("type"))) \
@@ -125,28 +134,28 @@ K __declspec(dllexport) qml_##ff(K u, K v) { \
 
 // Wrap a function of (F; F)
 #define WRAPnff(ffn,ff) \
-K __declspec(dllexport) qml_##ffn(K u, K v) { \
+K EXPORT qml_##ffn(K u, K v) { \
     P(!mf1p(u) || !mf1p(v), krr(ss("type"))) \
     R kf(ff(mf1f(u), mf1f(v))); \
 }
 
 // Wrap a function of (I; F)
 #define WRAPnif(ffn,ff) \
-K __declspec(dllexport) qml_##ffn(K u, K v) { \
+K EXPORT qml_##ffn(K u, K v) { \
     P(!mi1p(u) || !mf1p(v), krr(ss("type"))) \
     R kf(ff(mi1i(u), mf1f(v))); \
 }
 
 // Wrap a function of (F; F; F)
 #define WRAPnfff(ffn,ff) \
-K __declspec(dllexport) qml_##ffn(K u, K v, K w) { \
+K EXPORT qml_##ffn(K u, K v, K w) { \
     P(!mf1p(u) || !mf1p(v) || !mf1p(w), krr(ss("type"))) \
     R kf(ff(mf1f(u), mf1f(v), mf1f(w))); \
 }
 
 // Wrap a function of (I; I; F)
 #define WRAPniif(ffn,ff) \
-K __declspec(dllexport) qml_##ffn(K u, K v, K w) { \
+K EXPORT qml_##ffn(K u, K v, K w) { \
     P(!mi1p(u) || !mi1p(v) || !mf1p(w), krr(ss("type"))) \
     R kf(ff(mi1i(u), mi1i(v), mf1f(w))); \
 }
@@ -219,7 +228,7 @@ WRAPnff(c2cdf,chdtr)WRAPnff(c2icdf,c2icdf)
 WRAPnfff(gcdf,gcdf)WRAPnfff(gicdf,gicdf)
 
 // Make new F vector out of square matrix argument, column-major order
-ZK mfm(K x, I *n, const char **err) {
+ZK mfm(K x, I *n, char **err) {
     I j;
     K f, r;
     if (xt!=0 || (*n=xn)==0)
@@ -239,19 +248,16 @@ ZK mfm(K x, I *n, const char **err) {
 // Represent a complex value
 ZK mcv(F a, F b) {
     K x;
-    if (b!=0) {
-        x = ktn(KF, 2);
-        xF[0] = a;
-        xF[1] = b;
-        return x;
-    } else
-        return kf(a);
+    if (b!=0)
+        { x = ktn(KF, 2); xF[0] = a; xF[1] = b; R x; }
+    else
+        R kf(a);
 }
 
 // Matrix determinant
 int dgetrf_(int *m, int *n, double *a, int *lda, int* ipiv, int *info);
 
-K __declspec(dllexport) qml_mdet(K x) {
+K EXPORT qml_mdet(K x) {
     char* err;
     I j, n;
     F r;
@@ -278,7 +284,7 @@ K __declspec(dllexport) qml_mdet(K x) {
 int dgetri_(int *n, double *a, int *lda, int *ipiv, double *work, int *lwork,
     int *info);
 
-K __declspec(dllexport) qml_minv(K x) {
+K EXPORT qml_minv(K x) {
     char* err;
     I j, n, lwork;
     K ipiv, work, a = mfm(x, &n, &err);
@@ -309,7 +315,7 @@ int dgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
     double *wr, double* wi_, double *vl, int *ldvl, double *vr, int *ldvr,
     double *work, int *lwork, int *info);
 
-K __declspec(dllexport) qml_mevu(K x) {
+K EXPORT qml_mevu(K x) {
     char* err;
     I j, n, lwork;
     K f, a = mfm(x, &n, &err);
@@ -329,7 +335,7 @@ K __declspec(dllexport) qml_mevu(K x) {
         if (kF(f)[n+j]!=0)
             goto complex;
 
-real:
+/*real:*/
     xK[0] = ktn(KF, n);
     for (j=0; j<n; ++j)
         kF(xK[0])[j] = kF(f)[j];
@@ -365,10 +371,10 @@ done:
 // Cholesky decomposition
 int dpotrf_(char *uplo, int *n, double *a, int *lda, int *info);
 
-K __declspec(dllexport) qml_mchol(K x) {
+K EXPORT qml_mchol(K x) {
     char* err;
     I j, n;
-    K f, a = mfm(x, &n, &err);
+    K a = mfm(x, &n, &err);
     P(a==0, krr(ss(err)))
 
     dpotrf_("U", &n, kF(a), &n, &j);
@@ -391,7 +397,7 @@ int dgesvd_(char *jobu, char *jobvt, int *m, int *n, double *a, int *lda,
     double *s, double *u, int *ldu, double *vt, int *ldvt, double *work,
     int *lwork, int *info);
 
-K __declspec(dllexport) qml_msvd(K x) {
+K EXPORT qml_msvd(K x) {
     I j, n, m, min, lwork;
     K a, f;
     P(xt!=0 || (n=xn)==0, krr(ss("type")))
@@ -456,7 +462,7 @@ K __declspec(dllexport) qml_msvd(K x) {
         double *zeror, double* zeroi, long* fail);
 #endif
 
-K __declspec(dllexport) qml_poly(K x) {
+K EXPORT qml_poly(K x) {
     I j, n;
 #ifndef USE_R_POLY
     I complex;
@@ -583,13 +589,13 @@ K __declspec(dllexport) qml_poly(K x) {
 #define QUOTE1(x) (#x)
 #define QUOTE(x) QUOTE1(x)
 
-K __declspec(dllexport) qml_const(K x) {
+K EXPORT qml_const(K x) {
     F r;
     P(xt!=-KI, krr(ss("type")))
     SW(xi) {
         CS(0,R ks(QUOTE(VERSION)))
-        CS(1,r=M_PI)
-        CS(2,r=M_E)
+        CS(1,r=3.1415926535897932384626433832795028842)
+        CS(2,r=2.7182818284590452353602874713526624978)
         CS(3,r=DBL_EPSILON)
         CD: r=nf;
     }

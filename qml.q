@@ -1,6 +1,6 @@
 \d .qml
-{{y set{x 0^first where{count inv `$":",string[x],".dll"}each x}
-    [`qml,`$"/"sv string .z.o,`qml]
+{{y set{x 0^last where{count inv`$":",string[x],$[.z.o like"w*";".dll";".so"]}
+    each x:reverse x}[`$("./";"./",string[.z.o],"/";""),\:"qml"]
     2:(`$"qml_",string y;x)}[x]'[y]}'[1 2 3;(
     `tan`asin`acos`atan`sinh`cosh`tanh`asinh`acosh`atanh`exp`expm1`log`log10,
     `logb`log1p`cbrt`floor`ceil`fabs`erf`erfc`lgamma`gamma`j0`j1`y0`y1,

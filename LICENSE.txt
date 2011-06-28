@@ -64,6 +64,6 @@ See the file LICENSE_LIBF2C.txt for details.
 
 _______________________________________________________________________________
 
-Finally, this library is linked against q.lib.
+Finally, this library uses files from the Public q Code Library.
 See the file LICENSE_Q.txt for details.
 

@@ -6,8 +6,8 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is the first release of the Q Math Library, version 0.1.1.  Only the two
-Windows platforms are currently supported.
+This is the first release of the Q Math Library, version 0.1.2.  Only Windows
+and 32-bit Linux are currently supported.
 
 
 2. Licensing
@@ -47,10 +47,14 @@ real and imaginary parts.  E.g.:
     1 1.414214
     1 -1.414214
 
-It's probably a good idea to run test suite program, test.q, at some point.
+It's probably a good idea to run the test suite, test.q, at some point.
 
-Rebuilding requires Cygwin.  The top of the Makefile has some configuration
-options.
+To rebuild the library, use the Makefile, which is for GNU make.  There are
+configuration options near the top.  On Windows, rebuilding requires Cygwin,
+but the native C compiler may be used instead of GCC.  On other platforms, GCC
+version 4 is required.  Although only tested on 32-bit Linux, it will probably
+build on anything GNU-like with a few tweaks, but make sure to run the test
+suite.
 
 
 4. Constants and functions
