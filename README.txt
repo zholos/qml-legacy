@@ -137,13 +137,15 @@ by Cygwin.  The build, just run make.  See the top of the Makefile for options.
   mrank[matrix]   rank
   minv[matrix]    inverse
   mpinv[matrix]   pseudoinverse
+  mm[A;B]         multiply
+  ms[A;B]         solve B=A mm X, A is triangular
   mev[matrix]     (eigenvalues; eigenvectors) sorted by decreasing modulus
   mchol[matrix]   Cholesky factorization upper matrix
   mqr[matrix]     QR factorization: (Q; R)
   mqrp[matrix]    QR factorization with column pivoting:
-                    (Q; R; P), matrix@\:P=Q mmu R
+                    (Q; R; P), matrix@\:P=Q mm R
   mlup[matrix]    LUP factorization with row pivoting:
-                    (L; U; P), matrix[P]=L mmu U
+                    (L; U; P), matrix[P]=L mm U
   msvd[matrix]    singular value decomposition: (U; Sigma; V)
 
   poly[coef]      roots of a polynomial (highest-degree coefficient first, can

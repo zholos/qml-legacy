@@ -19,6 +19,10 @@
 #undef small
 #undef large
 #include <f2c.h>
+#define dgemv_ f2c_dgemv
+#define dgemm_ f2c_dgemm
+#define dtrsv_ f2c_dtrsv
+#define dtrsm_ f2c_dtrsm
 #include <clapack.h>
 #include <conmax.h>
 
@@ -50,7 +54,7 @@ ZI mi1i(K x) {
 
 // Make new I atom out of B, G, H or I argument
 Z K1(mi1) {
-    U(mi1p(x));
+    U(mi1p(x))
     R ki(mi1i(x));
 }
 
@@ -67,7 +71,7 @@ ZI mip(K x) {
 Z K1(mi) {
     K n;
     U(mip(x))
-    P(xt<0, mi1(x));
+    P(xt<0, mi1(x))
     n = ktn(KI, xn);
     SW(xt) {
         CS(KI, memcpy(kI(n), xI, xn*sizeof(I)))
@@ -101,7 +105,7 @@ ZF mf1f(K x) {
 
 // Make new F atom out of B, G, H, I, J, E or F argument
 Z K1(mf1) {
-    U(mf1p(x));
+    U(mf1p(x))
     R kf(mf1f(x));
 }
 
@@ -115,10 +119,11 @@ ZI mfp(K x) {
 }
 
 // Make new F atom or vector out of B, G, H, I, J, E or F argument
+// (xt<0 == mf(x)<0)
 Z K1(mf) {
     K f;
     U(mfp(x))
-    P(xt<0, mf1(x));
+    P(xt<0, mf1(x))
     f = ktn(KF, xn);
     SW(xt) {
         CS(KF, memcpy(kF(f), xF, xn*sizeof(F)))
@@ -311,27 +316,41 @@ ZV swap_i(I* x, I* y) {
 }
 
 // Make new F vector out of square matrix argument, column-major order
-ZK mfms(K x, integer *n, char **err) {
-    integer j;
+ZK mfms(K x, integer *n_, char *tr_, char **err) {
+    integer j, n;
     K f, r;
-    if (xt!=0 || (*n=xn)==0)
+    int tr[2] = { 1, 1 };
+    if (xt!=0 || (n=xn)==0)
         { *err="type"; R 0; }
-    r = ktn(KF, *n**n);
-    for (j=0; j<*n; ++j) {
+    r = ktn(KF, n*n);
+    for (j=0; j<n; ++j) {
         if ((f=mf(xK[j]))==0)
             { r0(r); *err="type"; R 0; }
-        if (f->t<0 || f->n!=*n)
+        if (f->t<0 || f->n!=n)
             { r0(f); r0(r); *err="length"; R 0; }
-        DO(*n, kF(r)[*n*i+j] = kF(f)[i])
+        DO(j,     tr[0] &= (kF(r)[n*i      +j] = kF(f)[i])==0)
+                            kF(r)[n*j      +j] = kF(f)[j];
+        DO(n-1-j, tr[1] &= (kF(r)[n*(j+1+i)+j] = kF(f)[j+1+i])==0);
         r0(f);
     }
+    *n_ = n;
+    if (tr_)
+        *tr_ = tr[0] ? 'U' : tr[1] ? 'L' : 'G';
     R r;
 }
 
 // Make new F vector out of matrix argument, column-major order
-ZK mfm(K x, integer *m, integer *n, char **err) {
+ZK mfm(K x, integer *m, integer *n, int *column, char **err) {
     integer j;
     K f, r;
+    if (column) {
+        if ((r=mf(x))!=0) {
+            if (r->t<0)
+                { r0(r); *err="length"; R 0; }
+            *m = r->n; *n = 1; *column = 1; R r;
+        }
+        *column = 0;
+    }
     if (xt!=0 || (*m=xn)==0 || (f=mf(xK[0]))==0)
         { *err="type"; R 0; }
     if (f->t<0 || (*n=f->n)==0)
@@ -350,6 +369,22 @@ ZK mfm(K x, integer *m, integer *n, char **err) {
     R r;
 }
 
+// Make K matrix out of F vector in column-major order
+ZK mmf(K x, integer m, integer n, int column) {
+    integer j;
+    F *q;
+    K r;
+    P(column, x)
+    r = ktn(0, m);
+    if (m==1)
+        { kK(r)[0] = x; R r; }
+    for (j=0; j<m; ++j) {
+        q = kF(kK(r)[j] = ktn(KF, n));
+        DO(n, q[i] = xF[i*m+j])
+    }
+    r0(x); R r;
+}
+
 // Represent a complex value
 ZK mcv(F a, F b) {
     K x;
@@ -361,24 +396,24 @@ ZK mcv(F a, F b) {
 
 // Matrix determinant
 K QML_EXPORT qml_mdet(K x) {
-    char* err;
+    char* err, tr;
     integer j, n;
-    F r;
-    K ipiv;
-    x = mfms(x, &n, &err);
+    F r = 1;
+
+    x = mfms(x, &n, &tr, &err);
     P(x==0, krr(ss(err)))
 
-    ipiv = ktn(QML_KLONG, n);
-    dgetrf_(&n, &n, kF(x), &n, QML_kLONG(ipiv), &j);
-    if (j!=0)
-        { r0(ipiv); r0(x); R j>0 ? kf(0) : krr(ss("qml_assert")); }
+    if (tr=='G') {
+        K ipiv = ktn(QML_KLONG, n);
+        dgetrf_(&n, &n, xF, &n, QML_kLONG(ipiv), &j);
+        if (j!=0)
+            { r0(ipiv); r0(x); R j>0 ? kf(0) : krr(ss("qml_assert")); }
 
-    j = 0;
-    DO(n, j += QML_kLONG(ipiv)[i]!=i+1);
-    r0(ipiv);
+        DO(n, if (QML_kLONG(ipiv)[i]!=i+1) r = -r)
+        r0(ipiv);
+    }
 
-    r = j%2 ? -1 : 1;
-    DO(n, r *= kF(x)[i*n+i])
+    DO(n, r *= xF[i*n+i])
     r0(x);
     R kf(r);
 }
@@ -388,7 +423,7 @@ K QML_EXPORT qml_minv(K x) {
     char* err;
     integer j, n, lwork;
     F maxwork;
-    K ipiv, work, a = mfms(x, &n, &err);
+    K ipiv, work, a = mfms(x, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     lwork = -1;
@@ -416,12 +451,69 @@ K QML_EXPORT qml_minv(K x) {
     r0(a); R x;
 }
 
+// Matrix multiply
+K QML_EXPORT qml_mm(K x, K y) {
+    static F f_one = 1, f_zero = 0; static integer i_one = 1;
+    char* err;
+    int y_column;
+    integer x_m, x_n, y_m, y_n;
+    K f;
+
+    if ((x = mfm(x, &x_m, &x_n, NULL, &err))==0)
+        R krr(ss(err));
+    if ((y = mfm(y, &y_m, &y_n, &y_column, &err))==0)
+        { r0(x); R krr(ss(err)); }
+    if (x_n!=y_m)
+        { r0(y); r0(x); R krr(ss("length")); }
+
+    f = ktn(KF, x_m*y_n);
+    if (y_n==1)
+        dgemv_("N", &x_m, &x_n, &f_one, xF, &x_m, kF(y), &i_one, &f_zero,
+               kF(f), &i_one);
+    else if (x_m==1)
+        dgemv_("T", &y_m, &y_n, &f_one, kF(y), &y_m, xF, &i_one, &f_zero,
+               kF(f), &i_one);
+    else
+        dgemm_("N", "N", &x_m, &y_n, &x_n, &f_one,
+               xF, &x_m, kF(y), &y_m, &f_zero, kF(f), &x_m);
+    r0(y); r0(x);
+
+    R mmf(f, x_m, y_n, y_column);
+}
+
+// Matrix substitution solve
+K QML_EXPORT qml_ms(K x, K y) {
+    static F f_one = 1; static integer i_one = 1;
+    char* err, x_tr;
+    int y_column;
+    integer i, x_n, y_m, y_n;
+
+    if ((x=mfms(x, &x_n, &x_tr, &err))==0)
+        R krr(ss(err));
+    if (x_tr=='G')
+        { r0(x); R krr(ss("domain")); }
+    for (i=0; i<x_n; i++)
+        if (xF[i*x_n+i]==0)
+            { r0(x); R ktn(0, 0); }
+
+    if ((y = mfm(y, &y_m, &y_n, &y_column, &err))==0)
+        { r0(x); R krr(ss(err)); }
+
+    if (y_n==1)
+        dtrsv_(&x_tr, "N", "N", &x_n, xF, &x_n, kF(y), &i_one); 
+    else
+        dtrsm_("L", &x_tr, "N", "N", &y_m, &y_n, &f_one, xF, &x_n, kF(y), &y_m);
+    r0(x);
+
+    R mmf(y, y_m, y_n, y_column);
+}
+
 // Eigenvalues and eigenvectors
 K QML_EXPORT qml_mevu(K x) {
     char* err;
     integer j, n, lwork;
     F maxwork;
-    K f, a = mfms(x, &n, &err);
+    K f, a = mfms(x, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     lwork = -1;
@@ -481,7 +573,7 @@ done:
 K QML_EXPORT qml_mchol(K x) {
     char* err;
     integer j, n;
-    K a = mfms(x, &n, &err);
+    K a = mfms(x, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     dpotrf_("U", &n, kF(a), &n, &j);
@@ -504,7 +596,7 @@ ZK qr(K x, const int pivot) {
     char* err;
     integer j, k, n, m, min, lwork;
     F maxwork, *q;
-    K jpiv, f, a = mfm(x, &m, &n, &err);
+    K jpiv, f, a = mfm(x, &m, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     min = min_i(m, n);
@@ -542,12 +634,12 @@ ZK qr(K x, const int pivot) {
     xK[0] = ktn(0, m);
     xK[1] = ktn(0, m);
     for (j=0; j<m; ++j) {
-        kK(xK[1])[j] = ktn(KF, n);
+        q = kF(kK(xK[1])[j] = ktn(KF, n));
         if (j<min) {
-            DO(j, kF(kK(xK[1])[j])[i] = 0)
-            DO(n-j, kF(kK(xK[1])[j])[j+i] = kF(a)[(j+i)*m+j])
+            DO(j, q[i] = 0)
+            DO(n-j, q[j+i] = kF(a)[(j+i)*m+j])
         } else
-            DO(n, kF(kK(xK[1])[j])[i] = 0)
+            DO(n, q[i] = 0)
     }
 
     if (n<m) {
@@ -581,7 +673,8 @@ K QML_EXPORT qml_mqrp(K x) {
 K QML_EXPORT qml_mlup(K x) {
     char* err;
     integer j, m, n, min;
-    K ipiv, a = mfm(x, &m, &n, &err);
+    F* q;
+    K ipiv, a = mfm(x, &m, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     min = min_i(m, n);
@@ -593,19 +686,19 @@ K QML_EXPORT qml_mlup(K x) {
     x = ktn(0, 3);
     xK[0] = ktn(0, m);
     for (j=0; j<m; ++j) {
-        kK(xK[0])[j] = ktn(KF, min);
+        q = kF(kK(xK[0])[j] = ktn(KF, min));
         if (j<min) {
-            DO(j, kF(kK(xK[0])[j])[i] = kF(a)[i*m+j])
-            kF(kK(xK[0])[j])[j] = 1;
-            DO(min-(j+1), kF(kK(xK[0])[j])[j+1+i] = 0)
+            DO(j, q[i] = kF(a)[i*m+j])
+            q[j] = 1;
+            DO(min-(j+1), q[j+1+i] = 0)
         } else
-            DO(min, kF(kK(xK[0])[j])[i] = kF(a)[i*m+j])
+            DO(min, q[i] = kF(a)[i*m+j])
     }
     xK[1] = ktn(0, min);
     for (j=0; j<min; ++j) {
-        kK(xK[1])[j] = ktn(KF, n);
-        DO(j, kF(kK(xK[1])[j])[i] = 0)
-        DO(n-j, kF(kK(xK[1])[j])[j+i] = kF(a)[(j+i)*m+j])
+        q = kF(kK(xK[1])[j] = ktn(KF, n));
+        DO(j, q[i] = 0)
+        DO(n-j, q[j+i] = kF(a)[(j+i)*m+j])
     }
     xK[2] = ktn(KI, m);
     DO(m, kI(xK[2])[i] = i)
@@ -617,8 +710,8 @@ K QML_EXPORT qml_mlup(K x) {
 K QML_EXPORT qml_msvd(K x) {
     char* err;
     integer j, m, n, min, lwork;
-    F maxwork;
-    K f, a = mfm(x, &m, &n, &err);
+    F maxwork, *q;
+    K f, a = mfm(x, &m, &n, NULL, &err);
     P(a==0, krr(ss(err)))
 
     min = min_i(m, n);
@@ -644,15 +737,15 @@ K QML_EXPORT qml_msvd(K x) {
     }
     xK[1] = ktn(0, m);
     for (j=0; j<m; ++j) {
-        kK(xK[1])[j] = ktn(KF, n);
-        DO(n, kF(kK(xK[1])[j])[i] = 0)
+        q = kF(kK(xK[1])[j] = ktn(KF, n));
+        DO(n, q[i] = 0)
         if (j<min)
-            kF(kK(xK[1])[j])[j] = kF(f)[j];
+            q[j] = kF(f)[j];
     }
     xK[2] = ktn(0, n);
     for (j=0; j<n; ++j) {
-        kK(xK[2])[j] = ktn(KF, n);
-        DO(n, kF(kK(xK[2])[j])[i] = kF(f)[min+m*m+j*n+i])
+        q = kF(kK(xK[2])[j] = ktn(KF, n));
+        DO(n, q[i] = kF(f)[min+m*m+j*n+i])
     }
     r0(f); R x;
 }
@@ -1205,7 +1298,7 @@ ZK line(K fun, K base, K x, I maxiter, doublereal tolcon, I full, I quiet) {
 
     sig = nsrch>=maxiter || nsrch>=lims1 ? "iter" :
           isnan(projct) ? "nan" : NULL;
-    P(sig && !quiet, krr(ss(sig)));
+    P(sig && !quiet, krr(ss(sig)))
 
     projct = info.neg ? info.base-projct : info.base+projct;
     x = sig ? kf(nf) : kf(projct);

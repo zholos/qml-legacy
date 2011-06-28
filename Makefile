@@ -1,63 +1,42 @@
-# Make configuration options:
-#   make PLATFORM=l32 (default is to autodetect)
-#   make BLAS=atlas   (default is blas)
+# Make configuration arguments:
+#   make BLAS=atlas                 (default is blas)
+#   make PLATFORM=l32               (default is autodetected)
+#   make CC=gcc42                   (default is gcc)
+#   make FC=i486-linux-gnu-gfortran (default is derived from CC)
 #
 
-ifneq "$(findstring $(PLATFORM),w32 w64 l32 l64 m32 m64 v32 v64 s32 s64)" ""
-else ifdef PLATFORM
-    $(error PLATFORM=$(PLATFORM) is not valid)
-else ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
-    ifeq "$(patsubst %WOW64,,.$(shell uname -s))" ""
-        PLATFORM=w64
-    else
-        PLATFORM=w32
-    endif
+ifeq "$(patsubst MINGW%,,$(patsubst CYGWIN%,,$(shell uname -s).))" ""
+    PLATFORM=$(if $(patsubst %WOW64,,.$(shell uname -s)),w32,w64)
 else ifeq "$(shell uname -s)" "Linux"
-    ifeq "$(shell uname -m)" "x86_64"
-        PLATFORM=l64
-    else
-        PLATFORM=l32
-    endif
+    PLATFORM=$(if $(findstring x86_64,$(shell uname -m)),l64,l32)
 else ifeq "$(shell uname -s)" "Darwin"
-    ifeq "$(shell uname -m)" "x86_64"
-        PLATFORM=m64
-    else
-        PLATFORM=m32
-    endif
+    PLATFORM=$(if $(findstring x86_64,$(shell uname -m)),m64,m32)
 else ifeq "$(shell uname -s)" "SunOS"
-    ifneq "$(findstring i386,$(shell isainfo))" ""
-        ifeq "$(shell isainfo -b)" "64"
-            PLATFORM=v64
-        else
-            PLATFORM=v32
-        endif
-    else
-        ifeq "$(shell isainfo -b)" "64"
-            PLATFORM=s64
-        else
-            PLATFORM=s32
-        endif
+    PLATFORM=$(if $(findstring i386,$(shell isainfo)),v,s)$(shell isainfo -b)
+endif
+
+ifeq "$(findstring $(PLATFORM),w32 w64 l32 l64 m32 m64 v32 v64 s32 s64)" ""
+    ifneq "$(PLATFORM)" ""
+        $(error PLATFORM=$(PLATFORM) is not valid)
     endif
-else
     $(error couldn't determine platform, please set PLATFORM variable)
 endif
-$(info Platform:   $(PLATFORM))
 
-PLATFORMCLASS=$(patsubst v,s,$(patsubst %64,%,$(patsubst %32,%,$(PLATFORM))))
-PLATFORMBITS=$(patsubst %64,64,$(patsubst %32,32,$(PLATFORM)))
+$(info PLATFORM=$(PLATFORM))
 
-ifeq "$(BLAS)" "atlas"
-else ifdef BLAS
+PLATFORMCLASS=$(subst v,s,$(subst 64,,$(subst 32,,$(PLATFORM))))
+PLATFORMBITS=$(if $(patsubst %64,,$(PLATFORM)),32,64)
+
+BLAS=blas
+ifeq "$(findstring $(BLAS),blas atlas)" ""
     $(error BLAS="$(BLAS)" is not valid)
-else
-    BLAS=blas
 endif
+ATLAS=
 ifeq "$(ATLAS)" "blas"
     $(error use BLAS=atlas)
 endif
-$(info BLAS:       $(BLAS))
 
-$(shell sleep 1)
+$(info BLAS=$(BLAS))
 
 
 #
@@ -66,16 +45,17 @@ $(shell sleep 1)
 
 # CDEFS and COPTS are flags that control what code is generated.
 # CFLAGS are flags necessary to make objects in the correct format.
+# XCFLAGS are added for binaries that run as part of the build process.
 
 CDEFS=-D_IEEE_LIBM -D__LITTLE_ENDIAN -D_REENTRANT
 COPTS=-std=gnu99 -O2 -fno-strict-aliasing -ffloat-store \
-    -Wall -Wno-parentheses -Wno-uninitialized
-# -fstrict-aliasing breaks fdlibm
-# -fno-float-store seems to break incbi() on Linux
+      -Wall -Wno-parentheses -Wno-uninitialized
+      # -fstrict-aliasing breaks fdlibm
+      # -fno-float-store seems to break incbi() on Linux
 CFLAGS=-pipe -fno-builtin-sin -fno-builtin-cos -fno-builtin-sqrt
-SOFLAGS=
-ENVFLAGS=
+XCFLAGS=
 
+OBJEXT=o
 ifeq "$(PLATFORMCLASS)" "w"
     DLLEXT=dll
     EXEEXT=.exe
@@ -83,46 +63,52 @@ ifeq "$(PLATFORMCLASS)" "w"
 else
     DLLEXT=so
     EXEEXT=
-    CFLAGS+= -fPIC
-    # explicit binary type
-    ifeq "$(patsubst %64,,$(PLATFORM))" ""
-        CFLAGS+= -m64
-    else
-        CFLAGS+= -m32
-    endif
+    CFLAGS+= -fPIC -m$(PLATFORMBITS)
 endif
+
+SOFLAGS=
+ENVFLAGS=
 ifeq "$(PLATFORMCLASS)" "m"
-    # Darwin flags
     SOFLAGS+= -bundle -undefined dynamic_lookup -nodefaultlibs -Wl,-x
     ENVFLAGS+= MACOSX_DEPLOYMENT_TARGET=10.4
+else ifeq "$(PLATFORMCLASS)" "s"
+    SOFLAGS+= -G -Wl,-s,-Bsymbolic
 else
-    ifeq "$(PLATFORMCLASS)" "s"
-        # OpenSolaris flags
-        SOFLAGS+= -G -Wl,-s,-Bsymbolic
-    else
-        # default flags
-        SOFLAGS+= -shared -Wl,-s,-Bsymbolic
+    SOFLAGS+= -shared -Wl,-s,-Bsymbolic
+endif
+
+CC=$(TOOLPREFIX)gcc$(GCCSUFFIX)
+FC=$(subst gcc,gfortran,$(CC))
+XCC=$(CC)
+LD=$(TOOLPREFIX)ld
+AR=$(TOOLPREFIX)ar
+RANLIB=$(TOOLPREFIX)ranlib
+DLLTOOL=$(TOOLPREFIX)dlltool
+NM=$(TOOLPREFIX)nm
+SEDI=sed -i.tmp
+
+# On Windows we want a more familiar POSIX environment for ATLAS xconfig etc.
+ifeq "$(PLATFORMCLASS)" "w"
+    ifeq "$(patsubst MINGW%,,$(shell uname -s).)" ""
+        XCC=i686-pc-msys-gcc
+    else ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
+        XCC=gcc
+        XCFLAGS+= -mcygwin
     endif
 endif
 
-TOOLPREPEND=
-ifneq "$(TOOLPREFIX)" ""
-    TOOLPREPEND=$(TOOLPREFIX)-
+$(info CC=$(CC))
+$(info FC=$(FC))
+ifneq "$(XCC)" "$(CC)"
+    $(info XCC=$(XCC))
 endif
-GCCAPPEND=
-ifneq "$(GCCSUFFIX)" ""
-    GCCAPPEND=-$(GCCSUFFIX)
-endif
-CC=$(TOOLPREPEND)gcc$(GCCAPPEND)
-FC=$(TOOLPREPEND)gfortran$(GCCAPPEND)
-LD=$(TOOLPREPEND)ld
-AR=$(TOOLPREPEND)ar
-RANLIB=$(TOOLPREPEND)ranlib
-DLLTOOL=$(TOOLPREPEND)dlltool
-NM=$(TOOLPREPEND)nm
-AS=$(TOOLPREPEND)as
-OBJEXT=o
-SEDI=sed -i.tmp
+$(info LD=$(LD) (etc))
+$(info COPTS=$(COPTS))
+$(info CFLAGS=$(CFLAGS))
+$(info )
+
+$(shell sleep 1)
+
 
 cc=$(CC) $(CDEFS) $(2) $(COPTS) $(CFLAGS) -c $(1)
 ar=$(AR) r $(1).a $(2)
@@ -139,6 +125,11 @@ endif
 ccdll+= -o $(1).$(DLLEXT) $(patsubst %,'%',$(2)) $(patsubst %,'%',$(3))
 ccexe=$(ENVFLAGS) $(CC) $(CDEFS) $(4) $(COPTS) $(CFLAGS) -o $(1)$(EXEEXT) \
     $(patsubst %,'%',$(2)) $(patsubst %,'%',$(3))
+ifneq "$(shell which curl 2>/dev/null)" ""
+    fetch=curl -RLo $(1) '$(2)'
+else
+    fetch=wget -O $(1) '$(2)'
+endif
 
 
 #
@@ -180,34 +171,34 @@ download/$(PLATFORM): | download
 	mkdir $@
 
 download/fdlibm-src.zip: | download
-	wget -O $@ '$(FDLIBM_SRC)'
+	$(call fetch,$@,$(FDLIBM_SRC))
 
 download/cprob.tgz: | download
-	wget -O $@ '$(CPROB_SRC)'
+	$(call fetch,$@,$(CPROB_SRC))
 
 download/k.h: | download
-	wget -O $@ '$(K_H)'
+	$(call fetch,$@,$(K_H))
 
 download/$(PLATFORM)/q.lib: | download/$(PLATFORM)
-	wget -O $@ '$(Q_LIB)'
+	$(call fetch,$@,$(Q_LIB))
 
 download/atlas.tar.bz2: | download
-	wget -O $@ '$(ATLAS_SRC)'
+	$(call fetch,$@,$(ATLAS_SRC))
 
 download/clapack.tgz: | download
-	wget -O $@ '$(CLAPACK_SRC)'
+	$(call fetch,$@,$(CLAPACK_SRC))
 
 download/f2c.exe.gz: | download
-	wget -O $@ '$(F2C_BIN_GZ)'
+	$(call fetch,$@,$(F2C_BIN_GZ))
 
 download/f2c.tar.gz: | download
-	wget -O $@ '$(F2C_SRC)'
+	$(call fetch,$@,$(F2C_SRC))
 
 download/f2c.h: | download
-	wget -O $@ '$(F2C_H)'
+	$(call fetch,$@,$(F2C_H))
 
 download/conmax.f: | download
-	wget -O $@ '$(CONMAX_F)'
+	$(call fetch,$@,$(CONMAX_F))
 
 
 #
@@ -333,12 +324,24 @@ atlas/.patched: atlas/.extracted
 	$(SEDI) -f patch/atlas-ilaenv.sed \
 	    atlas/ATLAS/interfaces/lapack/F77/src/ilaenv.f
 	$(SEDI) 's/- \(cd .* \/F77\)/\1/' atlas/ATLAS/makes/Make.bin
+	$(SEDI) 's/"(GCC)"/""/' atlas/ATLAS/CONFIG/src/atlconf_misc.c
+	$(SEDI) '/char  *[a-z]/s/\[[0-9]\{1,5\}\]/[100000]/g' \
+	    atlas/ATLAS/CONFIG/src/config.c \
+	    atlas/ATLAS/CONFIG/src/atlconf_misc.c
+	$(SEDI) 's/"WIN"/"IN"/' atlas/ATLAS/CONFIG/src/probe_OS.c
+	$(SEDI) "s/\\(|| ln\\[i\\] *== *'\\\\\\)n'/&\\1r'/" \
+	    atlas/ATLAS/tune/sysinfo/emit_buildinfo.c
+	$(SEDI) -e 's,`echo "\$$arg" | sed -e "s/\(--[^/]*\)//"`,$${arg#\1},' \
+	    -e 's,`echo "\$$arg" | sed -e "s/\^* +\$$*//"`,$$arg,' \
+	    atlas/ATLAS/configure
 	touch $@
 
 atlas/.configured: atlas/.patched
 	mkdir -p atlas/build
-	cd atlas/build && ../ATLAS/configure -t 0 -b $(PLATFORMBITS) \
-	    -C ic $(CC) -C if $(FC) -Fa al '$(CFLAGS)' --prefix=../install
+	cd atlas/build && ../ATLAS/configure -v 2 -t 0 -b $(PLATFORMBITS) \
+	    -C ac $(CC) -C if $(FC) -Fa al '$(CFLAGS)' \
+	    -C xc $(XCC) -Fa xc '$(CFLAGS) $(XCFLAGS)' \
+	    --cc=$(XCC) --cflags='$(CFLAGS) $(XCFLAGS)' --prefix=../install
 	$(SEDI) '/FLAGS *=/s/-O\($$\|[1 ]\)/-O2 /' atlas/build/Make.inc
 	touch $@
 
@@ -391,19 +394,15 @@ clapack/.patched: clapack/.extracted
 	    >clapack/INSTALL/second.c
 	sed -e 's/second/dsecnd/g' clapack/INSTALL/second.c \
 	    >clapack/INSTALL/dsecnd.c
-      ifeq "$(PLATFORMCLASS)" "w"
-	find clapack -name '*.h' -type l -exec cp '{}' clapack/.tmp.h ';' \
-	    -exec rm -- '{}' ';' -exec mv clapack/.tmp.h '{}' ';'
-      endif
 	touch $@
 
 ifeq "$(BLAS)" "atlas"
     clapack/make.inc.cflags: atlas/.configured
-	sed -n '/ICCFLAGS *=/s//CFLAGS=/p' atlas/build/Make.inc > $@.tmp
+	sed -n '/ICCFLAGS *=/s//CFLAGS=/p' atlas/build/Make.inc >$@.tmp
 	mv $@.tmp $@
 else
     clapack/make.inc.cflags:
-	echo 'CFLAGS=$$(CDEFS) $(COPTS) $(CFLAGS)' > $@
+	echo 'CFLAGS=$$(CDEFS) $(COPTS) $(CFLAGS)' >$@
 endif
 
 clapack/.configured: clapack/.patched clapack/make.inc.cflags
@@ -534,8 +533,8 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.2
-CONFIG=QML_VERSION=$(VERSION)$(patsubst -,,-$(patsubst blas,,$(BLAS)))
+VERSION=0.3.3
+CONFIG=QML_VERSION=$(VERSION)$(filter-out -blas,-$(BLAS))
 
 SOURCES=qml.c include/fdlibm.h include/k.h include/f2c.h include/clapack.h \
     include/conmax.h include/config.h

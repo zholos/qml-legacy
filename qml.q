@@ -11,7 +11,7 @@
                 `erf`erfc`lgamma`gamma`j0`j1`y0`y1`ncdf`nicdf`kcdf`kicdf,
                 `mdet`minv`mevu`mchol`mqr`mqrp`mlup`msvd`poly`const;
             `atan2`pow`hypot`fmod`beta`pgammar`pgammarc`ipgammarc,
-                `c2cdf`c2icdf`stcdf`sticdf`pscdf`psicdf`smcdf`smicdf,
+                `c2cdf`c2icdf`stcdf`sticdf`pscdf`psicdf`smcdf`smicdf`mm`ms,
                 `solve`min`root;
             `pbetar`ipbetar`fcdf`ficdf`gcdf`gicdf`bncdf`bnicdf,
                 `solvex`minx`rootx`conmin`line;
@@ -24,8 +24,8 @@ pbeta:{beta[x;y]*pbetar[x;y;z]};
 diag:{{@[x#abs[type y]$0;z;:;y]}[count x]'[x;til count x]};
 mdiag:{(n#x)@'til n:count[x]&count x 0};
 mrank:{sum not(d<eps*d[0]*count[x]|count x 0)|0=d:mdiag msvd[x]1};
-mpinv:{flip x[0]mmu{?[(y<x)|y=0;y;1%y]}[eps*x[1;0;0]*count[x 0]|count x 2]'[x 1]
-    mmu flip(x:msvd x)2};
+mpinv:{mm[x 2;flip mm[x 0;
+    {?[(y<x)|y=0;y;1%y]}[eps*x[1;0;0]*count[x 0]|count x 2]'[(x:msvd x)1]]]};
 mev:{x@\:idesc{$[0>type x;x*x;sum x*x]}'[(x:mevu x)0]};
 
 \d .
