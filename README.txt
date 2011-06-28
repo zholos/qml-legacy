@@ -6,8 +6,8 @@ The Q Math Library provides the q programming language and KDB+ database with
 an interface to a number of useful mathematical functions from the FDLIBM,
 Cephes and LAPACK libraries.
 
-This is the first release of the Q Math Library, version 0.1.2.  Only Windows
-and 32-bit Linux are currently supported.
+This is version 0.1.3 of the Q Math Library.  Only Windows, 32-bit Linux and
+32-bit Darwin are currently supported.
 
 
 2. Licensing
@@ -47,14 +47,15 @@ real and imaginary parts.  E.g.:
     1 1.414214
     1 -1.414214
 
-It's probably a good idea to run the test suite, test.q, at some point.
+It's recommended to run the test suite, test.q, to make sure that everything
+is working correctly.
 
 To rebuild the library, use the Makefile, which is for GNU make.  There are
 configuration options near the top.  On Windows, rebuilding requires Cygwin,
 but the native C compiler may be used instead of GCC.  On other platforms, GCC
-version 4 is required.  Although only tested on 32-bit Linux, it will probably
-build on anything GNU-like with a few tweaks, but make sure to run the test
-suite.
+version 4 is recommended.  Although only tested on 32-bit Linux, it will
+probably build on anything GNU-like with a few tweaks, but make sure to run
+the test suite.
 
 
 4. Constants and functions
@@ -63,6 +64,8 @@ suite.
   e               e
   eps             smallest representable step from 1.
 
+  sin[x]          sine
+  cos[x]          cosine
   tan[x]          tangent
   asin[x]         arcsine
   acos[x]         arccosine
@@ -82,6 +85,7 @@ suite.
   logb[x]         extract binary exponent
   log1p[x]        log[1+x]
   pow[a;x]        exponentiation
+  sqrt[x]         square root
   cbrt[x]         cube root
   hypot[x;y]      sqrt[pow[x;2]+pow[y;2]]
   floor[x]        round downward

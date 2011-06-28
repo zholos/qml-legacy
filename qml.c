@@ -6,7 +6,7 @@
 #undef EXPORT
 #ifdef DLLEXPORT
     #define EXPORT __declspec(dllexport)
-#elif defined(SOEXPORT)
+#elif defined(SOEXPORT) && __GNUC__>=4
     #define EXPORT __attribute__ ((visibility("default")))
 #else
     #define EXPORT
@@ -161,13 +161,13 @@ K EXPORT qml_##ffn(K u, K v, K w) { \
 }
 
 // fdlibmm functions
-/*WRAP1(cos)WRAP1(sin)*/WRAPf(tan)WRAPf(acos)WRAPf(asin)WRAPf(atan)WRAPff(atan2)
+WRAPf(cos)WRAPf(sin)WRAPf(tan)WRAPf(acos)WRAPf(asin)WRAPf(atan)WRAPff(atan2)
 WRAPf(cosh)WRAPf(sinh)WRAPf(tanh)WRAPf(acosh)WRAPf(asinh)WRAPf(atanh)
 WRAPf(exp)WRAPf(log)WRAPf(log10)WRAPf(logb)WRAPf(expm1)WRAPf(log1p)WRAPff(pow)
 WRAPf(floor)WRAPf(ceil)WRAPf(fabs)WRAPff(fmod)
 WRAPf(erf)WRAPf(erfc)WRAPf(lgamma)
 WRAPf(j0)WRAPf(j1)WRAPf(y0)WRAPf(y1)
-/*WRAP1(sqrt)*/WRAPf(cbrt)WRAPff(hypot)
+WRAPf(sqrt)WRAPf(cbrt)WRAPff(hypot)
 
 // Cephes probability functions
 extern double gamma(double);
@@ -228,7 +228,7 @@ WRAPnff(c2cdf,chdtr)WRAPnff(c2icdf,c2icdf)
 WRAPnfff(gcdf,gcdf)WRAPnfff(gicdf,gicdf)
 
 // Make new F vector out of square matrix argument, column-major order
-ZK mfm(K x, I *n, char **err) {
+ZK mfms(K x, I *n, char **err) {
     I j;
     K f, r;
     if (xt!=0 || (*n=xn)==0)
@@ -240,6 +240,28 @@ ZK mfm(K x, I *n, char **err) {
         if (f->t<0 || f->n!=*n)
             { r0(f); r0(r); *err="length"; R 0; }
         DO(*n, kF(r)[*n*i+j]=kF(f)[i])
+        r0(f);
+    }
+    R r;
+}
+
+// Make new F vector out of matrix argument, column-major order
+ZK mfm(K x, I *n, I *m, char **err) {
+    I j;
+    K f, r;
+    if (xt!=0 || (*n=xn)==0 || (f=mf(xK[0]))==0)
+        { *err="type"; R 0; }
+    if (f->t<0 || (*m=f->n)==0)
+        { r0(f); *err="length"; R 0; }
+    r = ktn(KF, *n**m);
+    for (j=0; j<*n; ++j) {
+        if (j!=0) {
+            if ((f=mf(xK[j]))==0)
+                { r0(r); *err="type"; R 0; }
+            if (f->t<0 || f->n!=*m)
+                { r0(f); r0(r); *err="length"; R 0; }
+        }
+        DO(*m, kF(r)[*n*i+j]=kF(f)[i])
         r0(f);
     }
     R r;
@@ -262,13 +284,13 @@ K EXPORT qml_mdet(K x) {
     I j, n;
     F r;
     K ipiv;
-    x = mfm(x, &n, &err);
+    x = mfms(x, &n, &err);
     P(x==0, krr(ss(err)))
 
     ipiv = ktn(KI, n);
     dgetrf_(&n, &n, kF(x), &n, kI(ipiv), &j);
     if (j!=0)
-        { r0(ipiv); r0(x); R kf(j>0 ? 0 : nf); }
+        { r0(ipiv); r0(x); R j>0 ? kf(0) : krr(ss("qml_assert")); }
 
     j = 0;
     DO(n, j+=kI(ipiv)[i]!=i+1);
@@ -287,20 +309,28 @@ int dgetri_(int *n, double *a, int *lda, int *ipiv, double *work, int *lwork,
 K EXPORT qml_minv(K x) {
     char* err;
     I j, n, lwork;
-    K ipiv, work, a = mfm(x, &n, &err);
+    F maxwork;
+    K ipiv, work, a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
+
+    lwork = -1;
+    dgetri_(&n, NULL, &n, NULL, &maxwork, &lwork, &j);
+    if (j!=0)
+        { r0(a); R krr(ss("qml_assert")); }
+    lwork = (I)(maxwork+.5);
+    if (lwork<n)
+        lwork = n;
 
     ipiv = ktn(KI, n);
     dgetrf_(&n, &n, kF(a), &n, kI(ipiv), &j);
     if (j!=0)
-        { r0(ipiv); r0(a); R ktn(0, 0); }
+        { r0(ipiv); r0(a); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
-    lwork = 64*n;
     work = ktn(KF, lwork);
     dgetri_(&n, kF(a), &n, kI(ipiv), kF(work), &lwork, &j);
     r0(work); r0(ipiv);
     if (j!=0)
-        { r0(a); R ktn(0, 0); }
+        { r0(a); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, n);
     for (j=0; j<n; ++j) {
@@ -318,16 +348,25 @@ int dgeev_(char *jobvl, char *jobvr, int *n, double *a, int *lda,
 K EXPORT qml_mevu(K x) {
     char* err;
     I j, n, lwork;
-    K f, a = mfm(x, &n, &err);
+    F maxwork;
+    K f, a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
 
-    lwork = 50*n;
+    lwork = -1;
+    dgeev_("N", "V", &n, NULL, &n, NULL, NULL, NULL, &n,
+        NULL, &n, &maxwork, &lwork, &j);
+    if (j!=0)
+        { r0(a); R krr(ss("qml_assert")); }
+    lwork = (I)(maxwork+.5);
+    if (lwork<(j=4*n))
+        lwork = j;
+
     f = ktn(KF, n*2 + n*n + lwork);
     dgeev_("N", "V", &n, kF(a), &n, kF(f), kF(f)+n, NULL, &n,
         kF(f)+n*2, &n, kF(f)+n*2+n*n, &lwork, &j);
     r0(a);
     if (j!=0)
-        { r0(f); R ktn(0, 0); }
+        { r0(f); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, 2);
     xK[1] = ktn(0, n);
@@ -374,12 +413,12 @@ int dpotrf_(char *uplo, int *n, double *a, int *lda, int *info);
 K EXPORT qml_mchol(K x) {
     char* err;
     I j, n;
-    K a = mfm(x, &n, &err);
+    K a = mfms(x, &n, &err);
     P(a==0, krr(ss(err)))
 
     dpotrf_("U", &n, kF(a), &n, &j);
     if (j!=0)
-        { r0(a); R ktn(0, 0); }
+        { r0(a); R k>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, n);
     for (j=0; j<n; ++j) {
@@ -398,32 +437,28 @@ int dgesvd_(char *jobu, char *jobvt, int *m, int *n, double *a, int *lda,
     int *lwork, int *info);
 
 K EXPORT qml_msvd(K x) {
+    char* err;
     I j, n, m, min, lwork;
-    K a, f;
-    P(xt!=0 || (n=xn)==0, krr(ss("type")))
-    for (j=0; j<n; ++j) {
-        if (j==0) {
-            if ((f=mf(xK[j]))==0 || f->t<0 || (m=f->n)==0)
-                { if(f!=0) r0(f); R krr(ss("type")); }
-            a = ktn(KF, n*m);
-        } else {
-            if ((f=mf(xK[j]))==0)
-                { r0(a); R krr(ss("type")); }
-            if (f->t<0 || f->n!=m)
-                { r0(f); r0(a); R krr(ss("length")); }
-        }
-        DO(m, kF(a)[n*i+j]=kF(f)[i])
-        r0(f);
-    }
+    F maxwork;
+    K f, a = mfm(x, &n, &m, &err);
+    P(a==0, krr(ss(err)))
 
     min = m < n ? m : n;
-    lwork = 4 * min + m + n;
+    lwork = -1;
+    dgesvd_("A", "A", &n, &m, NULL, &n, NULL, NULL, &n,
+        NULL, &m, &maxwork, &lwork, &j);
+    if (j!=0)
+        { r0(a); R krr(ss("qml_assert")); }
+    lwork = (I)(maxwork+.5);
+    if (lwork<(j=3*min+n+m))
+        lwork = j;
+
     f = ktn(KF, min + n*n + m*m + lwork);
     dgesvd_("A", "A", &n, &m, kF(a), &n, kF(f), kF(f)+min, &n,
         kF(f)+min+n*n, &m, kF(f)+min+n*n+m*m, &lwork, &j);
     r0(a);
     if (j!=0)
-        { r0(f); R ktn(0, 0); }
+        { r0(f); R j>0 ? ktn(0, 0) : krr(ss("qml_assert")); }
 
     x = ktn(0, 3);
     xK[0] = ktn(0, n);
@@ -469,7 +504,7 @@ K EXPORT qml_poly(K x) {
 #endif
     K a, c, r;
 #ifdef USE_LAPACK_POLY
-    F d;
+    F d, maxwork[2];
     I lwork;
     K work;
 #elif defined(USE_R_POLY)
@@ -533,9 +568,21 @@ K EXPORT qml_poly(K x) {
     else if (d == 0)
         j = 1;
     else {
-        lwork = 50*n;
+        lwork = -1;
+        if (complex)
+            zgeev_("N", "N", &n, NULL, &n, NULL, NULL, &n,
+                NULL, &n, maxwork, &lwork, NULL, &j);
+        else
+            dgeev_("N", "N", &n, NULL, &n, NULL, NULL, NULL, &n,
+                NULL, &n, maxwork, &lwork, &j);
+        if (j!=0)
+            { r0(c); r0(a); R krr(ss("qml_assert")); }
+        lwork = (I)(maxwork[0]+.5);
+        if (lwork<(j=(complex?2:3)*n))
+            lwork = j;
+
         if (complex) {
-            work = ktn(KF, 2*(n*n + lwork) + 2*n + lwork);
+            work = ktn(KF, 2*n*n + 2*lwork + 2*n);
             DO(2*n*n, kF(work)[i]=0)
             for (j=0; j<n; ++j) {
                 kF(work)[2*j*n] =
@@ -548,13 +595,15 @@ K EXPORT qml_poly(K x) {
                 NULL, &n, kF(work)+2*n*n, &lwork, kF(work)+2*n*n+2*lwork, &j);
         } else {
             work = ktn(KF, n*n + lwork);
-            DO(complex ? 2*n*n : n*n, kF(work)[i]=0)
+            DO(n*n, kF(work)[i]=0)
             DO(n, kF(work)[i*n]=-kF(c)[i+1]/d)
             DO(n-1, kF(work)[i*(n+1)+1]=1)
             dgeev_("N", "N", &n, kF(work), &n, kF(a), kF(a)+n, NULL, &n,
                 NULL, &n, kF(work)+n*n, &lwork, &j);
         }
         r0(work);
+        if (j<0)
+            { r0(c); r0(a); R krr(ss("roots")); }
     }
 #elif defined(USE_R_POLY)
     work = ktn(KF, 10*(n+1)); /* matches expression in cpoly.c */
@@ -571,7 +620,7 @@ K EXPORT qml_poly(K x) {
         cpoly_(kF(c), kF(c)+n+1, &n, kF(a), kF(a)+n, &j);
 #endif
     r0(c);
-    if (j)
+    if (j!=0)
         { r0(a); R krr(ss("roots")); }
     r = ktn(0, n);
     for (j=0; j<n; ++j)

@@ -14,9 +14,7 @@
 #     Cephes from Netlib, which has a note allowing free use.  poly implemented
 #     using LAPACK.  Result is distributable under a BSD-style license.
 
-ifeq "$(BUILD)" "private"
-else ifeq "$(BUILD)" "gpl"
-else
+ifeq "$(findstring $(BUILD),private gpl)" ""
     BUILD=bsd
 endif
 $(info Build type: $(BUILD))
@@ -26,28 +24,48 @@ $(info Build type: $(BUILD))
 #   w32
 #   w64
 
-ifeq "$(PLATFORM)" "w32"
-else ifeq "$(PLATFORM)" "w64"
-else
-    ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
-        ifeq "$(patsubst %WOW64,,.$(shell uname -s))" ""
-            PLATFORM=w64
-        else
-            PLATFORM=w32
-        endif
-    else ifeq "$(shell uname -s)" "Linux"
-        ifeq "$(shell uname -m)" "x86_64"
-            $(error l64 platform is currently not supported)
-	    #PLATFORM=l64
-        else
-            PLATFORM=l32
-        endif
+ifeq "$(findstring $(PLATFORM),w32 w64 l32)" ""
+  ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
+    ifeq "$(patsubst %WOW64,,.$(shell uname -s))" ""
+      PLATFORM=w64
     else
-        $(error couldn't determine platform, please set PLATFORM variable)
+      PLATFORM=w32
     endif
+  else
+    ifeq "$(shell uname -s)" "Linux"
+      ifeq "$(shell uname -m)" "x86_64"
+        $(error l64 platform is currently not supported)
+        PLATFORM=l64
+      else
+        PLATFORM=l32
+      endif
+    else
+      ifeq "$(shell uname -s)" "Darwin"
+        ifeq "$(shell uname -m)" "x86_64"
+          $(error m64 platform is currently not supported)
+          PLATFORM=m64
+        else
+          PLATFORM=m32
+        endif
+      else
+        ifeq "$(shell uname -s)" "SunOS"
+          ifeq "$(shell uname -m)" "x86_64"
+            $(error s64 platform is currently not supported)
+            PLATFORM=s64
+          else
+            $(error s32 platform is currently not supported)
+            PLATFORM=s32
+          endif
+        else
+          $(error couldn't determine platform, please set PLATFORM variable)
+        endif
+      endif
+    endif
+  endif
 endif
 $(info Platform:   $(PLATFORM))
 
+PLATFORMCLASS=$(patsubst %64,%,$(patsubst %32,%,$(PLATFORM)))
 
 # Toolchain
 #   mssdk:
@@ -81,6 +99,7 @@ ifeq "$(TOOLCHAIN)" "mssdk"
     endif
     CL="$(MSSDK_BIN)/cl"
     LINK="$(MSSDK_BIN)/link"
+    RANLIB=:
     OBJEXT=obj
     LIBEXT=lib
     DLLEXT=dll
@@ -91,34 +110,58 @@ ifeq "$(TOOLCHAIN)" "mssdk"
     ccdll=$(CL) $(DEFINES) $(4) $(CFLAGS) -LD $(patsubst %,'%',$(2)) \
           -link $(patsubst %,'%',$(3)) -out:$(1).$(DLLEXT)
 else
+    TOOLPREPEND=
     ifneq "$(TOOLPREFIX)" ""
         TOOLPREPEND=$(TOOLPREFIX)-
-    else
-        TOOLPREPEND=
     endif
-    CC=$(TOOLPREPEND)gcc
+    GCCAPPEND=
+    ifneq "$(GCCSUFFIX)" ""
+        GCCAPPEND=-$(GCCSUFFIX)
+    endif
+    CC=$(TOOLPREPEND)gcc$(GCCAPPEND)
     LD=$(TOOLPREPEND)ld
     AR=$(TOOLPREPEND)ar
     RANLIB=$(TOOLPREPEND)ranlib
     DLLTOOL=$(TOOLPREPEND)dlltool
     NM=$(TOOLPREPEND)nm
     AS=$(TOOLPREPEND)as
-        OBJEXT=o
-        LIBEXT=a
-    ifeq "$(patsubst w%,,$(PLATFORM))" ""
-        DLLEXT=dll
-        CFLAGS+= -mno-cygwin
-    else
-        CFLAGS+= -fPIC -fvisibility=hidden
-        DLLEXT=so
-    endif
+    OBJEXT=o
+    LIBEXT=a
     CFLAGS+= -std=gnu99 -O2 -fno-strict-aliasing -pipe
     CFLAGS+= -Wall -Wno-parentheses -Wno-uninitialized
     # -fstrict-aliasing breaks fdlibm
+    ENVFLAGS=
+    ifeq "$(PLATFORMCLASS)" "w"
+        DLLEXT=dll
+        CFLAGS+= -mno-cygwin
+    else
+        DLLEXT=so
+        CFLAGS+= -fPIC
+    endif
+    ifeq "$(PLATFORMCLASS)" "m"
+        ifeq "$(PLATFORM)" "m64"
+            CFLAGS+= -m64
+        endif
+        SOFLAGS=-bundle -undefined dynamic_lookup -nodefaultlibs -Wl,-x
+        ENVFLAGS=MACOSX_DEPLOYMENT_TARGET=10.4
+    else
+        ifeq "$(PLATFORMCLASS)" "s"
+            SOFLAGS=-G -Wl,-s
+        else
+            # default
+            ifneq "$(PLATFORMCLASS)" "w"
+                CFLAGS+= -fvisibility=hidden
+            endif
+            SOFLAGS=-shared -Wl,-s,-Bsymbolic
+        endif
+    endif
     cc=$(CC) $(DEFINES) $(2) $(CFLAGS) -c $(1)
     ar=$(AR) r $(1).$(LIBEXT) $(2)
-    ccdll=$(CC) $(DEFINES) $(4) $(CFLAGS) -shared -Wl,-s \
-          -o $(1).$(DLLEXT) $(2) $(3)
+    ccdll=$(ENVFLAGS) $(CC) $(DEFINES) $(4) $(CFLAGS) $(SOFLAGS)
+    ifeq "$(PLATFORMCLASS)" "m"
+        ccdll+= -exported_symbols_list $(1).symlist
+    endif
+    ccdll+= -o $(1).$(DLLEXT) $(2) $(3)
 endif
 
 
@@ -216,9 +259,10 @@ fdlibm/.extracted: download/fdlibm-src.zip
 	touch '$@'
 
 fdlibm/.patched: fdlibm/.extracted
-	sed -i $(foreach const,DOMAIN SING OVERFLOW UNDERFLOW TLOSS PLOSS __P,\
-	    -e '/#define[[:space:]]\{1,\}$(const)\b/i\' \
-	    -e '#undef $(const)') fdlibm/fdlibm.h
+	sed -i.tmp $(foreach const,\
+	    DOMAIN SING OVERFLOW UNDERFLOW TLOSS PLOSS __P,\
+	    -e '/#define[[:space:]]*$(const)/{h;s/.*/#undef $(const)/p;g;}') \
+	    fdlibm/fdlibm.h
 	rm -f fdlibm/libm-dllversion.c fdlibm/w_gamma.c fdlibm/*.o
 	touch '$@'
 
@@ -231,42 +275,49 @@ include/fdlibm.h: fdlibm/.patched
 
 lib/fdlibm.$(LIBEXT): fdlibm/fdlibm.$(LIBEXT)
 	mkdir -p lib && cp -f '$<' '$@'
+	$(RANLIB) '$@'
 
 
 # Patch and build Cephes library
 ifeq "$(BUILD)" "gpl"
     cephes/.extracted: download/labplot.tar.gz
-	tar xf '$<' --strip-components 1 --wildcards LabPlot-*/cephes
-	touch '$@'
-else ifeq "$(BUILD)" "bsd"
-    cephes/.extracted: download/cprob.tgz
-	mkdir -p cephes
-	tar xf download/cprob.tgz -C cephes
+	mkdir -p cephes && tar xzf '$<' -C cephes --wildcards 'LabPlot-*/cephes'
+	mv -f cephes/LabPlot-*/cephes/* cephes/
 	touch '$@'
 else
+  ifeq "$(BUILD)" "bsd"
+    cephes/.extracted: download/cprob.tgz
+	mkdir -p cephes
+	tar xzf download/cprob.tgz -C cephes
+	touch '$@'
+  else
     cephes/.extracted: download/cephes.zip
 	mkdir -p cephes && unzip -o '$<' -d cephes
 	touch '$@'
+  endif
 endif
 
 cephes/.patched: cephes/.extracted
-	sed -i -e '$$a\' -e '#define IBMPC 1' -e '/# *define  *UNK/d' \
-	    cephes/mconf.h
-	sed -i -e '/( *!isfinite(x) *)/s//(x==INFINITY||x==-INFINITY)/' \
+	sed -i.tmp -e '/#[[:space:]]*define[[:space:]]\{1,\}UNK/d' \
+	    -e '$${p;s/.*/#define IBMPC 1/;}' cephes/mconf.h
+	sed -i.tmp -e '/( *!isfinite(x) *)/s//(x==INFINITY||x==-INFINITY)/' \
 	    cephes/gamma.c
-	sed -i -e 's/erf/c_erf/g;1i\' \
-	    -e 'extern double c_erf(double), c_erfc(double);' cephes/ndtr.c
-	sed -i -e 's/y01/y0/g;/double igami(/{N;N;N;N;N;' \
-	    -e 's/$$/if(y0>.5||y0<=0)return(NAN);/}' cephes/igami.c
+	sed -i.tmp -e 's/erf/c_erf/g' \
+	    -e '1{h;s/.*/extern double c_erf(double), c_erfc(double);/p;g;}' \
+	    cephes/ndtr.c
+	sed -i.tmp -e 's/y01/y0/g;/double igami(/{N;N;N;N;N;' \
+	    -e 's/$$/if(y0>.5||y0<=0)return(NAN);/;}' cephes/igami.c
 	mv -f cephes/const.c cephes/const.c_
-	sed -i -e 's/true_gamma/gamma/g' cephes/*.h
-	sed -i -e 's/true_gamma/gamma/g' \
+	for file in cephes/*.h; do \
+	    sed -i.tmp -e 's/true_gamma/gamma/g' "$$file"; done
+	for file in cephes/*.c; do \
+	    sed -i.tmp -e 's/true_gamma/gamma/g' \
 	    -e 's/char st\{0,1\}\[\]="[[:alnum:]][[:alnum:]]*";//' \
-	    -e 's/mtherr( *\("\|\(s\|st\|fname\) *,\)[^)]*)/return(NAN)/;1i\' \
-	    -e 'extern double NAN;' cephes/*.c
+	    -e 's/mtherr( *["sf][^,]*,[^)]*)/return(NAN)/' \
+	    -e '1{h;s/.*/extern double NAN;/p;g;}' "$$file"; done
 	mv -f cephes/const.c_ cephes/const.c
 	if test -e cephes/simq.c; then \
-	    sed -i -e 's/printf([^)]*) *;//' cephes/simq.c; fi
+	    sed -i.tmp -e 's/printf([^)]*) *;//' cephes/simq.c; fi
 	rm -f cephes/{floor,log,atan,pow,exp,lmdif,mtherr,mod2pi,dtestvec}.c
     ifeq "$(PLATFORM)" "w32"
 	rm -f cephes/setprec.c
@@ -280,6 +331,7 @@ cephes/cephes.$(LIBEXT): cephes/.patched
 
 lib/cephes.$(LIBEXT): cephes/cephes.$(LIBEXT)
 	mkdir -p lib && cp -f '$<' '$@'
+	$(RANLIB) '$@'
 
 
 # Install q glue
@@ -291,7 +343,7 @@ ifeq "$(TOOLCHAIN)" "mssdk"
 	mkdir -p lib && cp -f '$<' '$@'
 else
     include/k.h: download/k.h
-	mkdir -p qlib && sed -e '/#define  *isnan/d;$$a\' -e '' '$<' >'$@'
+	mkdir -p qlib && sed -e '/#define  *isnan/d;$${p;s/.*//;}' '$<' >'$@'
 
     qlib/q.orig.lib: download/$(PLATFORM)/q.lib
 	mkdir -p qlib && cp -f '$<' '$@'
@@ -326,8 +378,8 @@ ifeq "$(TOOLCHAIN)" "mssdk"
 	mkdir -p lib && cp -f '$<' '$@'
 else
     clapack/.extracted: download/clapack.tgz
-	mkdir -p clapack
-	tar xf '$<' -C clapack --strip-components 1 --wildcards CLAPACK-*
+	mkdir -p clapack && tar xzf '$<' -C clapack
+	mv -f clapack/CLAPACK-*/* clapack/
 	touch '$@'
 
     clapack/.patched: clapack/.extracted
@@ -336,22 +388,35 @@ else
 	    echo 'NOOPT=$$(CFLAGS) -O0'; echo 'LOADOPTS=$$(CFLAGS)'; \
 	    echo 'LOADER=$$(CC)'; echo 'LD=$(LD)'; echo 'ARCH=$(AR)'; \
 	    echo 'RANLIB=$(RANLIB)'; } >clapack/make.inc
-      ifeq "$(patsubst w%,,$(PLATFORM))" ""
-	sed -i -e 's/\ba\.out\b/a.exe/g' clapack/F2CLIBS/libf2c/Makefile
+	sed -i.tmp -e 's/^\(TIME[[:space:]]*=\).*/\1/' \
+	    -e 's/\([^_[:alnum:]]\)cc\([^_[:alnum:]]\)/\1$$(CC)\2/' \
+	    -e 's/\([^_[:alnum:]]\)ld\([^_[:alnum:]]\)/\1$$(LD)\2/' \
+	    -e 's/\([^_[:alnum:]]\)ar\([^_[:alnum:]]\)/\1$$(ARCH)\2/' \
+            -e 's/\([^_[:alnum:]]\)ranlib\([^_[:alnum:]]\)/\1$$(RANLIB)\2/' \
+	    clapack/F2CLIBS/libf2c/Makefile
+      ifeq "$(PLATFORMCLASS)" "w"
+	sed -i.tmp -e 's/\([^_[:alnum:]]\)a\.out/\1a.exe/g' \
+	    clapack/F2CLIBS/libf2c/Makefile
       endif
-	sed -i -e 's/^\(TIME[[:space:]]*=\).*/\1/' \
-	    -e 's/\bcc\b/$$(CC)/;s/\bld\b/$$(LD)/;s/\bar\b/$$(ARCH)/' \
-            -e 's/\branlib\b/$$(RANLIB)/' clapack/F2CLIBS/libf2c/Makefile
-	sed -i -e '/^#define MSpc\b/d' clapack/F2CLIBS/libf2c/uninit.c
+      ifneq "$(findstring $(PLATFORMCLASS),m s)" ""
+	sed -i.tmp -e '/\$$(LD)/s/ -x / /' clapack/F2CLIBS/libf2c/Makefile
+	sed -i.tmp 's,\./test[a-z]*,:,g' clapack/Makefile
+	sed -i.tmp '/-o  *test[a-z]* /d' clapack/INSTALL/Makefile
+      endif
+	sed -i.tmp -e '/^#define MSpc\([^_[:alnum:]]\|$$\)/d' \
+	    clapack/F2CLIBS/libf2c/uninit.c
 	{ echo '#include "f2c.h"'; echo 'doublereal second_(){return 0;}'; } \
 	    >clapack/INSTALL/second.c
 	sed -e 's/second/dsecnd/g' clapack/INSTALL/second.c \
 	    >clapack/INSTALL/dsecnd.c
+      ifeq "$(PLATFORMCLASS)" "w"
 	find clapack -name '*.h' -type l -exec cp '{}' clapack/.tmp.h ';' \
-	    -exec rm -- '{}' ';' -exec mv clapack/.tmp.h {} ';'
+	    -exec rm -- '{}' ';' -exec mv clapack/.tmp.h '{}' ';'
+      endif
 	touch '$@'
 
     clapack/.built: clapack/.patched
+	cd clapack/F2CLIBS/libf2c && make hadd
 	cd clapack && make f2clib
 	rm -f clapack/{BLAS/,}SRC/{f2c,blaswrap}.h
 	cp -f clapack/INCLUDE/f2c.h clapack/BLAS/SRC
@@ -366,12 +431,15 @@ else
 
     lib/f2c.$(LIBEXT): clapack/.built
 	mkdir -p lib && cp -f clapack/F2CLIBS/libf2c.$(LIBEXT) '$@'
+	$(RANLIB) '$@'
 
     lib/blas.$(LIBEXT): clapack/.built
 	mkdir -p lib && cp -f clapack/blas_$(PLATFORM).$(LIBEXT) '$@'
+	$(RANLIB) '$@'
 
     lib/clapack.$(LIBEXT): clapack/.built
 	mkdir -p lib && cp -f clapack/lapack_$(PLATFORM).$(LIBEXT) '$@'
+	$(RANLIB) '$@'
 endif
 
 
@@ -379,14 +447,14 @@ endif
 ifeq "$(BUILD)" "gpl"
     cpoly/cpoly.c: download/cpoly.c
 	mkdir -p cpoly && cp -f '$<' '$@'
-	sed -i -e 's/Rboolean *\*fail/int *fail, double* work/' \
+	sed -i.tmp -e 's/Rboolean *\*fail/int *fail, double* work/' \
 	    -e 's/Rboolean/int/;s/FALSE/0/;s/TRUE/1/;s/R_PosInf/INFINITY/' \
 	    -e 's/<R_ext\/Arith\.h>/<fdlibm.h>/;/<R_ext\/Memory\.h>/d' \
 	    -e 's/R_alloc[^;]*/work/;/<Rmath\.h>/d;s/R_pow_di/pow/' \
-	    -e 's/\bM_SQRT2\b/1.4142135623730950488/' \
-	    -e 's/\bM_SQRT1_2\b/0.7071067811865475244/' \
-	    -e '/<R_ext\/Applic\.h>/d;1i\' -e 'extern double INFINITY;' \
-	    cpoly/cpoly.c
+	    -e '1{h;s/.*/#define M_SQRT2 1.4142135623730950488/p;' \
+	    -e 's/.*/#define M_SQRT1_2 0.7071067811865475244/p;' \
+	    -e 's/.*/extern double INFINITY;/p;g;}' \
+	    -e '/<R_ext\/Applic\.h>/d' cpoly/cpoly.c
 
     cpoly/cpoly.$(LIBEXT): cpoly/cpoly.c include/fdlibm.h lib/cephes.$(LIBEXT)
 	cd cpoly && $(call cc,cpoly.c,-I../include -DHAVE_HYPOT)
@@ -394,9 +462,10 @@ ifeq "$(BUILD)" "gpl"
 
     lib/cpoly.$(LIBEXT): cpoly/cpoly.$(LIBEXT)
 	mkdir -p lib && cp -f '$<' '$@'
-else ifeq "$(BUILD)" "bsd"
-    # only need LAPACK
 else
+  ifeq "$(BUILD)" "bsd"
+    # only need LAPACK
+  else
     cpoly/f2c.exe: download/f2c.exe.gz
 	mkdir -p cpoly && gunzip -c '$<' >'$@' && chmod +x '$@'
 
@@ -427,21 +496,24 @@ else
 
     lib/cpoly.$(LIBEXT): cpoly/cpoly.$(LIBEXT)
 	mkdir -p lib && cp -f '$<' '$@'
+  endif
 endif
 
 
 # Build QML
-VERSION=0.1.2
+VERSION=0.1.3
 CONFIG=-DVERSION=$(VERSION)
 ifeq "$(BUILD)" "gpl"
     CONFIG+= -DUSE_R_POLY
-else ifeq "$(BUILD)" "bsd"
+else
+  ifeq "$(BUILD)" "bsd"
     CONFIG+= -DUSE_LAPACK_POLY
+  endif
 endif
 
 SOURCES=qml.c include/fdlibm.h include/k.h include/clapack.h
 LIBS=
-ifeq "$(patsubst w%,,$(PLATFORM))" ""
+ifeq "$(PLATFORMCLASS)" "w"
     CONFIG+= -DDLLEXPORT
     LIBS+= lib/q.$(LIBEXT)
 else
@@ -463,7 +535,15 @@ ifeq "$(PLATFORM)" "w64"
 endif
 endif
 
-build/qml.$(DLLEXT): $(SOURCES) $(LIBS)
+build/qml.symlist: qml.c
+	mkdir -p build
+	sed -n -e '/#define/d;/WRAP/{' \
+	    -e 's/WRAP[[:alnum:]]*(\([^,)]*\)[^)]*)/ _qml_\1 /g;H;}' \
+	    -e '/qml_[_[:alnum:]]\{1,\}(/{s/^.*\(qml_[_[:alnum:]]*\).*/_\1/' \
+	    -e 'H;};$${s/.*//;x;s/[[:space:]]\{1,\}/ /g;s/^ //;s/ $$//;x;G;:a' \
+	    -e 's/^\(.\)\([^ ]*\) /\1\2\1/;t a' -e 's/^.//p;}' '$<' >'$@'
+
+build/qml.$(DLLEXT): $(SOURCES) $(LIBS) build/qml.symlist
 	mkdir -p build
 	cd build && $(call ccdll,qml,\
 	    $(patsubst %,../%,$(filter-out %.h,$(SOURCES))),\
@@ -476,9 +556,10 @@ $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)
 
 # Create distributable archive
 DIST=LICENSE.txt LICENSE_CLAPACK.txt LICENSE_LIBF2C.txt LICENSE_Q.txt \
-    README.txt Makefile qml.c qml.q test.q w32/qml.dll w64/qml.dll l32/qml.so
+    README.txt CHANGES.txt \
+    Makefile qml.c qml.q test.q w32/qml.dll w64/qml.dll l32/qml.so m32/qml.so
 
-dist: $(DIST)
+dist:
 	rm -f 'qml-$(VERSION).zip'
 	7z a -tzip -mx=9 'qml-$(VERSION).zip' $(DIST)
 

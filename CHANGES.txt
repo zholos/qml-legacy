@@ -1,0 +1,9 @@
+Version 0.1.3 on 2009-10-01:
+  * When calling LAPACK, query and allocate optimal workspace.
+  * Support Darwin.
+
+Version 0.1.2 on 2009-09-25:
+  * Support GCC on Windows.
+
+Version 0.1.1 on 2009-09-10:
+    First release.
