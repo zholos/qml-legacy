@@ -280,8 +280,8 @@ atlas/.configured: atlas/.patched
 	mkdir -p atlas/build
 	cd atlas/build && \
 	    ../ATLAS/configure -v 2 -t 0 -b $(PLATFORMBITS) \
-	    -C ac $(CC)    -Fa ac '$(CFLAGS)'  \
-	    -C if $(FC)    -Fa if '$(FFLAGS)'  \
+	    -C ac $(CC)    -Fa acg '$(CFLAGS)' \
+	    -C if $(FC)    -Fa if  '$(FFLAGS)' \
 	    -C xc $(XCC)   -Fa xc '$(XCFLAGS)' \
 	     --cc=$(XCC) --cflags='$(XCFLAGS)' \
 	    --prefix=../install
@@ -365,7 +365,7 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.5
+VERSION=0.3.6
 CONFIG=QML_VERSION=$(VERSION)
 
 SOURCES=qml.c

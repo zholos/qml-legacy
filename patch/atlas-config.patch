@@ -26,3 +26,20 @@
           usrcomps[i] = p->comp;
           p->comp = NULL;                /* so it isn't deleted by Kill */
           if (!usrcomps[NCOMP+i])
+
+--- ATLAS/CONFIG/src/SpewMakeInc.c
++++ ATLAS/CONFIG/src/SpewMakeInc.c
+@@ -645,11 +645,10 @@
+    {
+       if (i == XCC_) continue;  /* do not accept cross-compiler */
+       j = strlen(comps[i]);
+-      if (j >= 3 && comps[i][j-3] == 'g' &&
+-          comps[i][j-2] == 'c' && comps[i][j-1] == 'c')
++      if (i == ICC_)
+          break;
+    }
+-   goodgcc = (j < NCOMP) ? comps[j] : "gcc";
++   goodgcc = (i < NCOMP) ? comps[i] : "gcc";
+    fprintf(fpout, "   GOODGCC = %s", goodgcc);
+    if (gccflags)
+       fprintf(fpout, " %s", gccflags);

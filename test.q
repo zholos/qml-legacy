@@ -3304,7 +3304,7 @@ do[count mem:3#first system"w";
   test[".qml.line_[{-1%1+1e3*.qml.pow[x-1e4;2]};(0;1;19999;20000)]";"10000"];
   test[".qml.line_[{-1%x-x<1};(1;1+100*.qml.eps;2;3)]";"1"];
   test[".qml.line_[({-1e300|.qml.log abs 42-x*x};abs);(-10;0;50;100)]";".qml.sqrt 42"];
-  prec:1e-5;
+  prec:1e-4;
   .qml.solvex_:{f:{20-x-2*y},{-10-(3*x)+4*y};(.qml.solve[f;0 0];({{x}'[x]};0<)@'.qml.solvex[`full`rk`steps`tol`iter!1,1b,10,.1,100;f;0.,0]`x`iter;(all null@;{{x}'[x]};prec>abs@;0<;`feas=)@'.qml.solvex[`full`quiet`slp`tol,0;f;0.,0]`x`last`err`iter`sig)};
   test[".qml.solvex_[]";"(6 -7;((6 -7);1);(1;(6f;-7f);1;1;1))"];
   .qml.solve_:{{$[prec>max max max abs x-\:a:avg x;a;x]}raze .qml.solvex[`quiet]/:\:[(x;'[neg;]each reverse x;raze{@[reverse x;0;'[neg;]]}each 2 cut x);y]};
