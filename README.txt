@@ -54,9 +54,10 @@ It's recommended to run the test suite, test.q, to make sure that everything
 is working correctly.
 
 Building the library requires GNU make and GCC.  On Windows, these are provided
-by Cygwin.  The build, just run make.  See the top of the Makefile for options.
+by Cygwin and MinGW (or MinGW-w64).  The build, just run make.  See the top of
+the Makefile for options.
 
-    make BLAS=atlas
+    make
 
     make test
 

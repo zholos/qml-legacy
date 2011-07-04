@@ -3308,6 +3308,7 @@ do[count mem:3#first system"w";
   .qml.solvex_:{f:{20-x-2*y},{-10-(3*x)+4*y};(.qml.solve[f;0 0];({{x}'[x]};0<)@'.qml.solvex[`full`rk`steps`tol`iter!1,1b,10,.1,100;f;0.,0]`x`iter;(all null@;{{x}'[x]};prec>abs@;0<;`feas=)@'.qml.solvex[`full`quiet`slp`tol,0;f;0.,0]`x`last`err`iter`sig)};
   test[".qml.solvex_[]";"(6 -7;((6 -7);1);(1;(6f;-7f);1;1;1))"];
   .qml.solve_:{{$[prec>max max max abs x-\:a:avg x;a;x]}raze .qml.solvex[`quiet]/:\:[(x;'[neg;]each reverse x;raze{@[reverse x;0;'[neg;]]}each 2 cut x);y]};
+  test[".qml.solve_[(1-.qml.log@),{(x-.qml.e)*x-1};-1]";"0n"]; / was invalid read
   test[".qml.solve_[(1-.qml.log@),{(x-.qml.e)*x-1};(1;2;3)]";"e"];
   test[".qml.solve_[{25-(x*x)+y*y},{64-x*7+3*y};((0;0);(5;10);(7;-15))]";"(4;3)"];
   test[".qml.solve_[{25-(x*x)+y*y},{y-1+x%.qml.pow[16;1%x]};((1;0);(2;-1);(10;10))]";"(4;3)"];

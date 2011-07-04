@@ -4,17 +4,17 @@
 #   make FC=i486-linux-gnu-gfortran (default is derived from CC)
 #
 
-ifeq "$(patsubst MINGW%,,$(patsubst CYGWIN%,,$(shell uname -s).))" ""
-    PLATFORM=$(if $(patsubst %WOW64,,.$(shell uname -s)),w32,w64)
+ifneq "$(filter MINGW% CYGWIN%,$(shell uname -s))" ""
+    PLATFORM=$(if $(filter %WOW64,$(shell uname -s)),w64,w32)
 else ifeq "$(shell uname -s)" "Linux"
-    PLATFORM=$(if $(findstring x86_64,$(shell uname -m)),l64,l32)
+    PLATFORM=$(if $(filter x86_64,$(shell uname -m)),l64,l32)
 else ifeq "$(shell uname -s)" "Darwin"
-    PLATFORM=$(if $(findstring x86_64,$(shell uname -m)),m64,m32)
+    PLATFORM=$(if $(filter x86_64,$(shell uname -m)),m64,m32)
 else ifeq "$(shell uname -s)" "SunOS"
-    PLATFORM=$(if $(findstring i386,$(shell isainfo)),v,s)$(shell isainfo -b)
+    PLATFORM=$(if $(filter i386,$(shell isainfo)),v,s)$(shell isainfo -b)
 endif
 
-ifeq "$(findstring $(PLATFORM),w32 w64 l32 l64 m32 m64 v32 v64 s32 s64)" ""
+ifeq "$(filter w32 w64 l32 l64 m32 m64 v32 v64 s32 s64,$(PLATFORM))" ""
     ifneq "$(PLATFORM)" ""
         $(error PLATFORM=$(PLATFORM) is not valid)
     endif
@@ -24,7 +24,7 @@ endif
 $(info PLATFORM=$(PLATFORM))
 
 PLATFORMCLASS=$(subst v,s,$(subst 64,,$(subst 32,,$(PLATFORM))))
-PLATFORMBITS=$(if $(patsubst %64,,$(PLATFORM)),32,64)
+PLATFORMBITS=$(if $(filter %64,$(PLATFORM)),64,32)
 
 
 #
@@ -44,7 +44,7 @@ FLAGS=-pipe -march=native
 CFLAGS=$(FLAGS)
 FFLAGS=$(FLAGS) -fno-f2c -frecursive
        # -frecursive is necessary for thread-safety
-XCFLAGS=$(FLAGS)
+XCFLAGS=-pipe
 
 OBJEXT=o
 ifeq "$(PLATFORMCLASS)" "w"
@@ -54,8 +54,10 @@ ifeq "$(PLATFORMCLASS)" "w"
 else
     DLLEXT=so
     EXEEXT=
-    FLAGS+= -fPIC -m$(PLATFORMBITS)
+    FLAGS+= -fPIC
 endif
+FLAGS+= -m$(PLATFORMBITS)
+# XCFLAGS doesn't need -m64, and Cygwin gcc doesn't accept -m64.
 
 SOFLAGS=
 ENVFLAGS=
@@ -83,17 +85,19 @@ ifeq "$(PLATFORMCLASS)" "w"
     ifeq "$(patsubst MINGW%,,$(shell uname -s).)" ""
         XCC=i686-pc-msys-gcc
     else ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
+        TOOLPREFIX=$(if $(filter 64,$(PLATFORMBITS)),x86_64,i686)-w64-mingw32-
         XCC=gcc
-        XCFLAGS+= -mcygwin
     endif
 endif
 
 $(info CC=$(CC))
 $(info FC=$(FC))
+$(info XCC=$(XCC))
 $(info LD=$(LD) (etc))
 $(info COPTS=$(COPTS))
 $(info CFLAGS=$(CFLAGS))
 $(info FFLAGS=$(FFLAGS))
+$(info XCFLAGS=$(XCFLAGS))
 $(info )
 
 
@@ -118,6 +122,10 @@ ifneq "$(shell which curl 2>/dev/null)" ""
 else
     fetch=wget -O $(1) '$(2)'
 endif
+
+# Without this, our command-line variables will propagate to override all
+# makefiles, even through configure scripts.
+MAKEOVERRIDES=
 
 
 #
@@ -269,17 +277,38 @@ atlas/.patched: atlas/.extracted
 	    atlas/ATLAS/CONFIG/src/config.c \
 	    atlas/ATLAS/CONFIG/src/atlconf_misc.c
 	$(SEDI) 's/"WIN"/"IN"/' atlas/ATLAS/CONFIG/src/probe_OS.c
+    ifeq "$(PLATFORM)" "w64"
+	$(SEDI) '/ATL_asmdecor/s/\(Mjoin(\)_/\1/' \
+	    atlas/ATLAS/CONFIG/include/atlas_asm.h \
+	    atlas/ATLAS/include/atlas_asm.h
+	$(SEDI) -e '/\([td] \(asm_probe\|do_vsum\|do_cpuid\)([^)]*)\);/{' \
+	    -e 's//\1 __attribute__((sysv_abi));/;}' \
+	    atlas/ATLAS/CONFIG/src/backend/probe_this_asm.c \
+	    atlas/ATLAS/CONFIG/src/backend/probe_[sd]vec.c \
+	    atlas/ATLAS/CONFIG/src/backend/archinfo_x86.c
+    endif
+	$(SEDI) 's:(F77).*backend/[^ ]*F\.f:& -static:' \
+	    atlas/ATLAS/CONFIG/src/Makefile
 	$(SEDI) "s/\\(|| ln\\[i\\] *== *'\\\\\\)n'/&\\1r'/" \
 	    atlas/ATLAS/tune/sysinfo/emit_buildinfo.c
 	$(SEDI) -e 's:`echo "\$$arg" | sed -e "s/\(--[^/]*\)//"`:$${arg#\1}:' \
 	    -e 's:`echo "\$$arg" | sed -e "s/\^* +\$$*//"`:$$arg:' \
 	    atlas/ATLAS/configure
+	$(SEDI) -e '1{h;s/.*/include make.inc.qml/p;g;}' \
+	    -e '/^XC\(C\|FLAGS\) *=/d' \
+	    -e '/^CCFLAGS *=/{p;s/^C/X/;s/(\(CFLAGS)\)/(_X\1/;}' \
+	    atlas/ATLAS/CONFIG/src/Makefile
 	touch $@
 
 atlas/.configured: atlas/.patched
 	mkdir -p atlas/build
+	{ echo 'CC=$(CC)'; echo 'CFLAGS=$(CFLAGS)'; \
+	    echo 'XCC=$(XCC)'; echo '_XCFLAGS=$(XCFLAGS)'; } \
+	    >atlas/build/make.inc.qml
 	cd atlas/build && \
 	    ../ATLAS/configure -v 2 -t 0 -b $(PLATFORMBITS) \
+	    $(if $(filter w,$(PLATFORMCLASS)),-D c -DWALL) \
+	    $(if $(filter w64,$(PLATFORM)),-Si archdef 0) \
 	    -C ac $(CC)    -Fa acg '$(CFLAGS)' \
 	    -C if $(FC)    -Fa if  '$(FFLAGS)' \
 	    -C xc $(XCC)   -Fa xc '$(XCFLAGS)' \
@@ -318,7 +347,7 @@ lapack/.extracted: download/lapack.tgz
 lapack/.patched: lapack/.extracted
 	$(SEDI) -e '/SHELL *=/d' \
 	    -e '/\(FORTRAN\|LOADER\) *=/{s/gfortran/$$(FC)/;s/ -g//;}' \
-	    -e '/LOADOPTS *=/s/$$/$$(OPTS)/' lapack/make.inc.example
+	    -e '/LOADOPTS *=/s/$$/ $$(OPTS) -static/' lapack/make.inc.example
 	$(SEDI) -f patch/lapack-builtin.sed $(addprefix lapack/SRC/, \
 	    dormqr.f dormbr.f dormlq.f dormhr.f dgesvd.f dhseqr.f \
 	    zhseqr.f zunmhr.f zunmqr.f dlasd0.f dlalsa.f dlasda.f)
@@ -365,24 +394,15 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.6
-CONFIG=QML_VERSION=$(VERSION)
+VERSION=0.3.7
 
 SOURCES=qml.c
 INCLUDES=include/k.h include/cblas.h include/clapack.h
 LIBS=
 ifeq "$(PLATFORMCLASS)" "w"
-    CONFIG+= QML_DLLEXPORT
     LIBS+= lib/q.a
 endif
 LIBS+= lib/cephes.a lib/alapack.a lib/conmax.a
-
-ifeq "$(PLATFORMCLASS)" "s"
-    build/compat.c:
-	mkdir -p build
-	echo "int MAIN__() { return 0; }" >$@
-    SOURCES+= build/compat.c
-endif
 
 build/qml.symlist: qml.c
 	mkdir -p build
@@ -399,11 +419,11 @@ build/qml.$(DLLEXT): $(SOURCES) $(INCLUDES) $(LIBS) \
 	cd build && $(call ccdll,qml, \
 	    $(addprefix ../,$(SOURCES)), \
 	    $(addprefix ../,$(LIBS)), \
-	    -I../include $(addprefix -D,$(CONFIG)))
+	    -I../include -DQML_VERSION=$(VERSION))
 
 $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)
 	mkdir -p $(PLATFORM)
-	cp -p $< $@
+	cp $< $@
 
 .PHONY: test
 test: all

@@ -10,14 +10,16 @@
        {
           for (p=comps[i]; p; p = p->next)
           {
-@@ -628,6 +629,7 @@
+@@ -628,7 +629,8 @@
                 flg = NewAppendedString(flg, usrcomps[NCOMP*2+i]);
              sp = GetWinComp(OS, p->comp);
              if (!sp) sp = p->comp;
 +            if (usrcomps[i]) sp = usrcomps[i];
-             if (ptrbits)
+-            if (ptrbits)
++            if (ptrbits && i != XCC_)
                 flg = NewAppendedString(flg,
                                         GetPtrbitsFlag(OS, arch, ptrbits, sp));
+             if (!CompTest(verb, targ, i, sp, flg))
 @@ -639,6 +641,7 @@
              CompError(i);
           else
@@ -26,6 +28,24 @@
           usrcomps[i] = p->comp;
           p->comp = NULL;                /* so it isn't deleted by Kill */
           if (!usrcomps[NCOMP+i])
+@@ -704,7 +707,7 @@
+       flg = NewStringCopy(usrcomps[NCOMP+i]?usrcomps[NCOMP+i]:p->flags);
+       if (usrcomps[NCOMP*2+i])
+          flg = NewAppendedString(flg, usrcomps[NCOMP*2+i]);
+-      if (ptrbits)
++      if (ptrbits && i != XCC_)
+          flg = NewAppendedString(flg,
+                                  GetPtrbitsFlag(OS, arch, ptrbits,usrcomps[i]));
+       if (CompTest(verb, targ, i, usrcomps[i], flg))
+@@ -733,7 +736,7 @@
+  */
+    if (ptrbits && arch != IA64Itan && arch != IA64Itan2)
+    {
+-      for (i=0; i < NCOMP; i++)
++      for (i=0; i < NCOMP; i++) if (i != XCC_)
+       {
+          sp = GetPtrbitsFlag(OS, arch, ptrbits, usrcomps[i]);
+          usrcomps[i+NCOMP] = NewAppendedString(usrcomps[i+NCOMP], sp);
 
 --- ATLAS/CONFIG/src/SpewMakeInc.c
 +++ ATLAS/CONFIG/src/SpewMakeInc.c

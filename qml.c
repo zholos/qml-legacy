@@ -9,11 +9,10 @@
 
 #include <k.h>
 
-#undef QML_EXPORT
-#ifdef QML_DLLEXPORT
-    #define QML_EXPORT __declspec(dllexport)
+#ifdef _WIN32
+    #define DLL_EXPORT __declspec(dllexport)
 #else
-    #define QML_EXPORT
+    #define DLL_EXPORT
 #endif
 
 
@@ -67,7 +66,7 @@ add_size(I a, I m, I n) {
 
 // krr() might return NULL or an error object.
 // This dummy object represents no error.
-static struct k0 no_error_ = { 0 };
+static struct k0 no_error_;
 #define no_error (&no_error_)
 
 // Used internally as both a default empty list and as a flag.
@@ -251,7 +250,7 @@ copy_F(K x, F* f, I step) {
 
 // Wrap a function of (atom/vector F)
 #define wrap_F(name, func) \
-K QML_EXPORT               \
+K DLL_EXPORT               \
 qml_##name(K x) {          \
     wrap_last(x, func(v)); \
 }
@@ -262,7 +261,7 @@ qml_##name(K x) {          \
 
 // Wrap a function of (atom I, atom/vector F)
 #define wrap_iF(name, func)     \
-K QML_EXPORT                    \
+K DLL_EXPORT                    \
 qml_##name(K x, K y) {          \
     check_type(is_i(x),);       \
     I x_i = as_i(x);            \
@@ -272,7 +271,7 @@ qml_##name(K x, K y) {          \
 
 // Wrap a function of (atom F, atom/vector F)
 #define wrap_fF(name, func)     \
-K QML_EXPORT                    \
+K DLL_EXPORT                    \
 qml_##name(K x, K y) {          \
     check_type(is_f(x),);       \
     F x_f = as_f(x);            \
@@ -282,7 +281,7 @@ qml_##name(K x, K y) {          \
 
 // Wrap a function of (atom/vector F, atom/vector F)
 #define wrap_FF(name, func)                          \
-K QML_EXPORT                                         \
+K DLL_EXPORT                                         \
 qml_##name(K x, K y) {                               \
     if (is_f(y)) {                                   \
         F y_f = as_f(y);                             \
@@ -310,7 +309,7 @@ qml_##name(K x, K y) {                               \
 
 // Wrap a function of (atom I; atom I; atom/vector F)
 #define wrap_iiF(name, func)                 \
-K QML_EXPORT                                 \
+K DLL_EXPORT                                 \
 qml_##name(K x, K y, K z) {                  \
     check_type(is_i(x) && is_i(y),);         \
     I x_i = as_i(x), y_i = as_i(y);          \
@@ -320,7 +319,7 @@ qml_##name(K x, K y, K z) {                  \
 
 // Wrap a function of (atom F; atom F; atom/vector F)
 #define wrap_ffF(name, func)                 \
-K QML_EXPORT                                 \
+K DLL_EXPORT                                 \
 qml_##name(K x, K y, K z) {                  \
     check_type(is_f(x) && is_f(y),);         \
     F x_f = as_f(x), y_f = as_f(y);          \
@@ -777,7 +776,7 @@ complex:;
 
 
 // Matrix determinant
-K QML_EXPORT
+K DLL_EXPORT
 qml_mdet(K x) {
     int triangular;
     I n;
@@ -806,7 +805,7 @@ qml_mdet(K x) {
 
 
 // Matrix inverse
-K QML_EXPORT
+K DLL_EXPORT
 qml_minv(K x) {
     I n, info, *ipiv;
     F *a;
@@ -831,7 +830,7 @@ done:
 
 
 // Matrix multiply
-K QML_EXPORT
+K DLL_EXPORT
 qml_mm(K x, K y) {
     int b_column;
     I a_m, a_n, b_m, b_n;
@@ -860,7 +859,7 @@ qml_mm(K x, K y) {
 
 
 // Matrix substitution solve
-K QML_EXPORT
+K DLL_EXPORT
 qml_ms(K x, K y) {
     int a_triangular, b_column;
     I a_n, b_m, b_n, info;
@@ -893,7 +892,7 @@ done:
 
 
 // Eigenvalues and eigenvectors
-K QML_EXPORT
+K DLL_EXPORT
 qml_mevu(K x) {
     I n, info, lwork;
     F *a, *w, maxwork;
@@ -945,7 +944,7 @@ qml_mevu(K x) {
 
 
 // Cholesky decomposition
-K QML_EXPORT
+K DLL_EXPORT
 qml_mchol(K x) {
     I n;
     F* a;
@@ -1011,19 +1010,19 @@ mqr(K x, int pivot) {
     return x;
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mqr(K x) {
     return mqr(x, 0);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mqrp(K x) {
     return mqr(x, 1);
 }
 
 
 // LUP factorization
-K QML_EXPORT
+K DLL_EXPORT
 qml_mlup(K x) {
     I m, n, min, *ipiv;
     F* a;
@@ -1056,7 +1055,7 @@ qml_mlup(K x) {
 
 
 // Singular value decomposition
-K QML_EXPORT
+K DLL_EXPORT
 qml_msvd(K x) {
     I m, n, min, lwork, info, *iw;
     F *a, *w, maxwork;
@@ -1102,7 +1101,7 @@ qml_msvd(K x) {
 //
 
 // Polynomial root finding
-K QML_EXPORT
+K DLL_EXPORT
 qml_poly(K x) {
     int complex;
     I n, lwork, info;
@@ -1240,14 +1239,14 @@ static const struct opt ls_opt[] = {
     { NULL }
 };
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mlsx(K opts, K x, K y) {
     union optv v[] = { { 0 } };
     check(take_opt(opts, ls_opt, v), krr(ss("opt")),);
     return mls(x, y, v[0].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mls(K x, K y) {
     return mls(x, y, 0);
 }
@@ -1298,14 +1297,14 @@ static const struct opt lsq_opt[] = {
     { NULL }
 };
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mlsqx(K opts, K x, K y) {
     union optv v[] = { { 0 } };
     check(take_opt(opts, lsq_opt, v), krr(ss("opt")),);
     return mlsq(x, y, v[0].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_mlsq(K x, K y) {
     return mlsq(x, y, 0);
 }
@@ -1417,6 +1416,8 @@ fnset_call(struct fnset_info* info, K f, int neg, F* param) {
     if (x && is_f(x)) {
         F v = as_f(x);
         r0(x);
+        if (isnan(v)) // protect optimization routines from NaNs
+            return wf; // this is -wf for ">=" constraints
         return neg ? -v : v;
     }
 
@@ -1654,9 +1655,9 @@ root(K fun, K x, I maxiter, F tolcon, int full, int quiet) {
             err1, &p1, &f1, &p2, &f2);
     bubble_error(info.error,);
 
-    S sig = nsrch >= maxiter ? "iter" :
+    S sig = nsrch >= maxiter                 ? "iter" :
             !(f2 >= -tolcon && f2 <= tolcon) ? "feas" :
-            isnan(p2) ? "nan" : NULL;
+            isnan(p2)                        ? "nan"  : NULL;
     if (sig && sig_sign)
         sig = "sign";
     check(!sig || quiet, krr(ss(sig)),);
@@ -1729,7 +1730,7 @@ line(K fun, K base, K x, I maxiter, F tolcon, int full, int quiet) {
     bubble_error(info.error,);
 
     S sig = nsrch >= maxiter || nsrch >= lims1 ? "iter" :
-            isnan(projct) ? "nan" : NULL;
+            isnan(projct)                      ? "nan"  : NULL;
     check(!sig || quiet, krr(ss(sig)),);
 
     projct = info.base + (info.neg ? -projct : projct);
@@ -1761,7 +1762,7 @@ Z const struct opt solve_opt[] = {
     { NULL }
 };
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_solvex(K opts, K x, K y) {
     union optv v[] = { { 1000 }, { .f = -1 }, { -1 },
                        { 0 }, { 0 }, { 0 }, { 0 } };
@@ -1770,12 +1771,12 @@ qml_solvex(K opts, K x, K y) {
                     v[3].i, v[4].i, 0, v[5].i, v[6].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_solve(K x, K y) {
     return qml_solvex(empty_con, x, y);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_minx(K opts, K x, K y) {
     union optv v[] = { { 1000 }, { .f = -1 }, { -1 },
                        { 0 }, { 0 }, { 0 }, { 0 } };
@@ -1784,7 +1785,7 @@ qml_minx(K opts, K x, K y) {
                     v[3].i, v[4].i, 0, v[5].i, v[6].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_min(K x, K y) {
     return qml_minx(empty_con, x, y);
 }
@@ -1801,7 +1802,7 @@ static const struct opt conmin_opt[] = {
     { NULL }
 };
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_conminx(K opts, K x, K y, K z) {
     union optv v[] = { { 1000 }, { .f = -1 }, { -1 },
                        { 0 }, { 0 }, { 0 }, { 0 }, { 0 } };
@@ -1810,7 +1811,7 @@ qml_conminx(K opts, K x, K y, K z) {
                     v[3].i, v[4].i, v[5].i, v[6].i, v[7].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_conmin(K x, K y, K z) {
     return qml_conminx(empty_con, x, y, z);
 }
@@ -1823,26 +1824,26 @@ static const struct opt rootline_opt[] = {
     { NULL }
 };
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_rootx(K opts, K x, K y) {
     union optv v[] = { { 100 }, { .f = -1 }, { 0 }, { 0 } };
     check(take_opt(opts, rootline_opt, v), krr(ss("opt")),);
     return root(x, y, v[0].i, v[1].f, v[2].i, v[3].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_root(K x, K y) {
     return qml_rootx(empty_con, x, y);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_linex(K opts, K x, K y, K z) {
     union optv v[] = { { 100 }, { .f = -1 }, { 0 }, { 0 } };
     check(take_opt(opts, rootline_opt, v), krr(ss("opt")),);
     return line(x, y, z, v[0].i, v[1].f, v[2].i, v[3].i);
 }
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_line(K x, K y, K z) {
     return qml_linex(empty_con, x, y, z);
 }
@@ -1855,7 +1856,7 @@ qml_line(K x, K y, K z) {
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
-K QML_EXPORT
+K DLL_EXPORT
 qml_const(K x) {
     check_type(xt==-KI,);
     switch (xi) {
