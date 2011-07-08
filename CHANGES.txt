@@ -1,3 +1,8 @@
+Version 0.3.8 on 2011-07-08:
+  * Fixed patching process on Darwin: some sed scripts were not portable.
+  * Limited static linking of Fortran test programs to Cygwin, as it was
+    failing on some other platforms.
+
 Version 0.3.7 on 2011-07-04:
   * Fixed building of ATLAS on 64-bit Windows.
   * Prevented invalid read in CONMAX on NaN input.

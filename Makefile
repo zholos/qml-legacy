@@ -45,6 +45,7 @@ CFLAGS=$(FLAGS)
 FFLAGS=$(FLAGS) -fno-f2c -frecursive
        # -frecursive is necessary for thread-safety
 XCFLAGS=-pipe
+FLOADFLAGS=
 
 OBJEXT=o
 ifeq "$(PLATFORMCLASS)" "w"
@@ -87,6 +88,7 @@ ifeq "$(PLATFORMCLASS)" "w"
     else ifeq "$(patsubst CYGWIN%,,$(shell uname -s).)" ""
         TOOLPREFIX=$(if $(filter 64,$(PLATFORMBITS)),x86_64,i686)-w64-mingw32-
         XCC=gcc
+        FLOADFLAGS=-static
     endif
 endif
 
@@ -287,7 +289,7 @@ atlas/.patched: atlas/.extracted
 	    atlas/ATLAS/CONFIG/src/backend/probe_[sd]vec.c \
 	    atlas/ATLAS/CONFIG/src/backend/archinfo_x86.c
     endif
-	$(SEDI) 's:(F77).*backend/[^ ]*F\.f:& -static:' \
+	$(SEDI) 's:(F77).*backend/[^ ]*F\.f:& $(FLOADFLAGS):' \
 	    atlas/ATLAS/CONFIG/src/Makefile
 	$(SEDI) "s/\\(|| ln\\[i\\] *== *'\\\\\\)n'/&\\1r'/" \
 	    atlas/ATLAS/tune/sysinfo/emit_buildinfo.c
@@ -295,8 +297,8 @@ atlas/.patched: atlas/.extracted
 	    -e 's:`echo "\$$arg" | sed -e "s/\^* +\$$*//"`:$$arg:' \
 	    atlas/ATLAS/configure
 	$(SEDI) -e '1{h;s/.*/include make.inc.qml/p;g;}' \
-	    -e '/^XC\(C\|FLAGS\) *=/d' \
-	    -e '/^CCFLAGS *=/{p;s/^C/X/;s/(\(CFLAGS)\)/(_X\1/;}' \
+	    -e '/^ *XCC *=/d;/^ *XCFLAGS *=/d' \
+	    -e '/^ *CCFLAGS *=/{p;s/^C/X/;s/(\(CFLAGS)\)/(_X\1/;}' \
 	    atlas/ATLAS/CONFIG/src/Makefile
 	touch $@
 
@@ -314,7 +316,7 @@ atlas/.configured: atlas/.patched
 	    -C xc $(XCC)   -Fa xc '$(XCFLAGS)' \
 	     --cc=$(XCC) --cflags='$(XCFLAGS)' \
 	    --prefix=../install
-	$(SEDI) '/FLAGS *=/s/-O\($$\|[1 ]\)/-O2 /' atlas/build/Make.inc
+	$(SEDI) '/FLAGS *=/s/-O[1 ]/-O2 /' atlas/build/Make.inc
 	{ echo; echo 'ARCHIVER=$(AR)'; echo 'RANLIB=$(RANLIB)'; } \
 	    >>atlas/build/Make.inc
 	touch $@
@@ -345,9 +347,10 @@ lapack/.extracted: download/lapack.tgz
 	touch $@
 
 lapack/.patched: lapack/.extracted
-	$(SEDI) -e '/SHELL *=/d' \
-	    -e '/\(FORTRAN\|LOADER\) *=/{s/gfortran/$$(FC)/;s/ -g//;}' \
-	    -e '/LOADOPTS *=/s/$$/ $$(OPTS) -static/' lapack/make.inc.example
+	$(SEDI) -e '/^ *SHELL *=/d' \
+	    -e '/^ *\(FORTRAN\)*\(LOADER\)* *=/{s/gfortran/$$(FC)/;s/ -g//;}' \
+	    -e '/^ *LOADOPTS *=/s/$$/ $$(OPTS) $(FLOADFLAGS)/' \
+	    lapack/make.inc.example
 	$(SEDI) -f patch/lapack-builtin.sed $(addprefix lapack/SRC/, \
 	    dormqr.f dormbr.f dormlq.f dormhr.f dgesvd.f dhseqr.f \
 	    zhseqr.f zunmhr.f zunmqr.f dlasd0.f dlalsa.f dlasda.f)
@@ -379,7 +382,8 @@ lib/alapack.a: atlas/.combined | lib
 # Build conmax
 conmax/conmax.f: download/conmax.f
 	mkdir -p conmax
-	sed -f patch/conmax.sed $< >$@
+	sed -f patch/conmax.sed $< >$@.tmp
+	mv $@.tmp $@
 
 conmax/conmax.a: conmax/conmax.f
 	cd conmax && $(call fc,conmax.f,-ffloat-store)
@@ -394,7 +398,7 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.7
+VERSION=0.3.8
 
 SOURCES=qml.c
 INCLUDES=include/k.h include/cblas.h include/clapack.h
