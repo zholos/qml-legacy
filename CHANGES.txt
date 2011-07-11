@@ -1,3 +1,7 @@
+Version 0.3.9 on 2011-07-11:
+  * Updated to ATLAS 3.9.46.
+  * Added 'make check' target to run tests for individual libraries (ATLAS).
+
 Version 0.3.8 on 2011-07-08:
   * Fixed patching process on Darwin: some sed scripts were not portable.
   * Limited static linking of Fortran test programs to Cygwin, as it was

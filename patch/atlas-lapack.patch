@@ -1,0 +1,13 @@
+--- ATLAS/src/lapack/ATL_getf2.c
++++ ATLAS/src/lapack/ATL_getf2.c
+@@ -86,8 +86,8 @@
+ 
+    for (j=0; j < MN; j++, Ac += lda2)
+    {
+-      if (LU1(M, N, j, A, lda, ipiv))
+-         iret = j;
++      if (LU1(M, N, j, A, lda, ipiv) && !iret) /* Match LAPACK. */
++         iret = j + 1;
+ 
+       my_ger(M-j-1, N-j-1, none, Ac+((j+1)SHIFT), 1, Ac+((j+lda)SHIFT), lda,
+              Ac+((lda+j+1)SHIFT), lda);

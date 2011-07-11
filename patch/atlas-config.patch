@@ -1,43 +1,59 @@
 --- ATLAS/CONFIG/src/probe_comp.c
 +++ ATLAS/CONFIG/src/probe_comp.c
-@@ -619,7 +619,8 @@
+@@ -612,7 +612,7 @@
+  * If on Win64, build MinGW compiler wrappers.
+  * Look in /usr/bin/ for standard cygwin names for the cygwin compilers
+  */
+-   if (OS == OSWinNT && ptrbits == 64)
++   if (0) /* Too confusing. The Cygwin packages understand Cygwin paths. */
+    {
+       int fndit;
+ /*
+@@ -699,13 +699,16 @@
   *    If the user has not specified the compiler, look through all available
   *    compilers with one that works (with user flags, if specified)
   */
 -      if (!usrcomps[i])
-+      /* Always look through list of compilers to find best flags. */
-+      if (1)
++      if (1) /* Always look through list to find best flags. */
        {
           for (p=comps[i]; p; p = p->next)
           {
-@@ -628,7 +629,8 @@
+             flg = NewStringCopy(usrcomps[NCOMP+i]?usrcomps[NCOMP+i]:p->flags);
+             if (usrcomps[NCOMP*2+i])
                 flg = NewAppendedString(flg, usrcomps[NCOMP*2+i]);
++            if (usrcomps[i])
++                sp = usrcomps[i];
++            else
              sp = GetWinComp(OS, p->comp);
-             if (!sp) sp = p->comp;
-+            if (usrcomps[i]) sp = usrcomps[i];
+             if (!sp)
+             {
+@@ -728,7 +731,7 @@
+                else
+                   sp = p->comp;
+             }
 -            if (ptrbits)
-+            if (ptrbits && i != XCC_)
-                flg = NewAppendedString(flg,
-                                        GetPtrbitsFlag(OS, arch, ptrbits, sp));
-             if (!CompTest(verb, targ, i, sp, flg))
-@@ -639,6 +641,7 @@
++            if (ptrbits && i != XCC_) /* Whatever XCC defaults to is fine. */
+             {
+                if (OS == OSWinNT && ptrbits == 64 && i == XCC_)
+                   flg = NewAppendedString(flg, "-m32");
+@@ -746,6 +749,7 @@
              CompError(i);
           else
              free(flg);
 +         if (!usrcomps[i])
-          usrcomps[i] = p->comp;
+          usrcomps[i] = (mgwd) ? sp : p->comp;
           p->comp = NULL;                /* so it isn't deleted by Kill */
           if (!usrcomps[NCOMP+i])
-@@ -704,7 +707,7 @@
+@@ -811,7 +815,7 @@
        flg = NewStringCopy(usrcomps[NCOMP+i]?usrcomps[NCOMP+i]:p->flags);
        if (usrcomps[NCOMP*2+i])
           flg = NewAppendedString(flg, usrcomps[NCOMP*2+i]);
 -      if (ptrbits)
 +      if (ptrbits && i != XCC_)
-          flg = NewAppendedString(flg,
-                                  GetPtrbitsFlag(OS, arch, ptrbits,usrcomps[i]));
-       if (CompTest(verb, targ, i, usrcomps[i], flg))
-@@ -733,7 +736,7 @@
+       {
+          if (OS == OSWinNT && ptrbits == 64 && i == XCC_)
+             flg = NewAppendedString(flg, "-m32");
+@@ -847,7 +851,7 @@
   */
     if (ptrbits && arch != IA64Itan && arch != IA64Itan2)
     {
@@ -45,11 +61,11 @@
 +      for (i=0; i < NCOMP; i++) if (i != XCC_)
        {
           sp = GetPtrbitsFlag(OS, arch, ptrbits, usrcomps[i]);
-          usrcomps[i+NCOMP] = NewAppendedString(usrcomps[i+NCOMP], sp);
+          if (OS == OSWinNT && ptrbits == 64 && i == XCC_)
 
 --- ATLAS/CONFIG/src/SpewMakeInc.c
 +++ ATLAS/CONFIG/src/SpewMakeInc.c
-@@ -645,11 +645,10 @@
+@@ -675,8 +675,7 @@
     {
        if (i == XCC_) continue;  /* do not accept cross-compiler */
        j = strlen(comps[i]);
@@ -58,8 +74,63 @@
 +      if (i == ICC_)
           break;
     }
--   goodgcc = (j < NCOMP) ? comps[j] : "gcc";
-+   goodgcc = (i < NCOMP) ? comps[i] : "gcc";
-    fprintf(fpout, "   GOODGCC = %s", goodgcc);
-    if (gccflags)
-       fprintf(fpout, " %s", gccflags);
+    goodgcc = (i < NCOMP) ? comps[i] : "gcc";
+
+--- ATLAS/CONFIG/src/atlconf_misc.c
++++ ATLAS/CONFIG/src/atlconf_misc.c
+@@ -686,6 +686,7 @@
+  *    version line.  Don't want to search for just "gcc", since that will
+  *    match with pgcc
+  */
++      return 1; /* We only use GCC. */
+       if (strstr(res, "(GCC)") || strstr(res, " GCC ") ||
+           strstr(res, "GNU Fortran") || strstr(res, "(GCC ") ||
+           (res[0] == 'g' && res[1] == 'c' && res[2] == 'c' && res[3] == ' ')
+
+--- ATLAS/CONFIG/src/probe_OS.c
++++ ATLAS/CONFIG/src/probe_OS.c
+@@ -32,7 +32,7 @@
+       else if(strstr(ln, "IRIX")) OS = OSIRIX;
+       else if(strstr(ln, "AIX")) OS = OSAIX;
+       else if(strstr(ln, "Interix")) OS = OSWinSFU;
+-      else if(strstr(ln, "WIN"))
++      else if(strstr(ln, "WIN") || strstr(ln, "MINGW"))
+       {
+          if (strstr(ln, "95") || strstr(ln, "98") || strstr(ln, "_ME"))
+             OS = OSWin9x;
+
+--- ATLAS/tune/sysinfo/emit_buildinfo.c
++++ ATLAS/tune/sysinfo/emit_buildinfo.c
+@@ -31,6 +31,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <assert.h>
++#include <ctype.h>
+ #define LNLEN 2048
+ static char ARCHDEFS[LNLEN], ARCH[LNLEN], DKCFLAGS[LNLEN], DKC[LNLEN],
+             DMCFLAGS[LNLEN], DMC[LNLEN], F2CDEFS[LNLEN], F77FLAGS[LNLEN],
+@@ -76,7 +77,7 @@
+          ln[i] = ' ';
+    }
+ 
+-   for (i--; i >= 0 && (ln[i] == ' ' || ln[i] == '\n' || ln[i] == '\t'); i--)
++   for (i--; i >= 0 && isspace(ln[i]); i--) /* Including '\r' */
+       ln[i] = '\0';
+ }
+ 
+
+--- ATLAS/makes/Make.sysinfo
++++ ATLAS/makes/Make.sysinfo
+@@ -79,8 +79,11 @@
+ RunMulAdd: xmasearch
+ 	./xmasearch $(pre) $(maxlat) $(mflop)
+ 
++# xemit_lamch is compiled by MinGW (ICC) and so doesn't understand Cygwin paths
+ RunLamch : xemit_lamch
+-	$(ATLRUN) $(SYSdir) xemit_lamch $(INCAdir)
++	mkdir -p $(SYSdir)/_include
++	$(ATLRUN) $(SYSdir) xemit_lamch _include
++	cp $(SYSdir)/_include/* $(INCAdir)
+ RunTyp: xemit_typ
+	$(ATLRUN) $(SYSdir) xemit_typ > $(INCAdir)/atlas_type.h
+ 

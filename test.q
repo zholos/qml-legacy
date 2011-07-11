@@ -2995,6 +2995,7 @@ do[count mem:3#first system"w";
   test[".qml.ms[(1 0;2 6);(1 3;2 6)]";"(1 3;2#0)"];
   test[".qml.ms[(1 3;0 6);(1 3;2 6)]";"(2#0;1 3%3)"];
   prec:1e-8;
+  test[".qml.mls[enlist 1#0;1#1]";"1#0n"]; / ATLAS dgetf2() return code
   test[".qml.mls[enlist 1#42;enlist 1#42]";"enlist 1#1"];
   test[".qml.mls[enlist 1#42;1#42]";"1#1"];
   test[".qml.mls[enlist 1#42;enlist 5 -6]";"enlist 5 -6%42"];

@@ -147,7 +147,7 @@ NETLIB_DIR=http://www.netlib.org
 
 CPROB_SRC=$(NETLIB_DIR)/cephes/cprob.tgz
 
-ATLAS_SRC=$(SOURCEFORGE_DIR)/math-atlas/Stable/3.8.4/atlas3.8.4.tar.bz2
+ATLAS_SRC=$(SOURCEFORGE_DIR)/math-atlas/Developer%20%28unstable%29/3.9.46/atlas3.9.46.tar.bz2
 LAPACK_SRC=$(NETLIB_DIR)/lapack/lapack-3.3.0.tgz
 
 CONMAX_F=$(NETLIB_DIR)/opt/conmax.f
@@ -171,7 +171,7 @@ download/k.h: | download
 download/$(PLATFORM)/q.lib: | download/$(PLATFORM)
 	$(call fetch,$@,$(Q_LIB))
 
-download/atlas.tar.bz2: | download
+download/atlas-3.9.46.tar.bz2: | download
 	$(call fetch,$@,$(ATLAS_SRC))
 
 download/lapack.tgz: | download
@@ -264,7 +264,7 @@ lib/q.a: qlib/q.a | lib
 # Build ATLAS and LAPACK libraries
 #
 
-atlas/.extracted: download/atlas.tar.bz2
+atlas/.extracted: download/atlas-3.9.46.tar.bz2
 	mkdir -p atlas
 	tar xjf $< -C atlas
 	touch $@
@@ -273,26 +273,23 @@ atlas/.patched: atlas/.extracted
 	$(SEDI) -f patch/atlas-ilaenv.sed \
 	    atlas/ATLAS/interfaces/lapack/F77/src/ilaenv.f
 	patch -p0 -d atlas <patch/atlas-config.patch
+	patch -p0 -d atlas <patch/atlas-lapack.patch
 	$(SEDI) 's/- \(cd .* \/F77\)/\1/' atlas/ATLAS/makes/Make.bin
-	$(SEDI) 's/"(GCC)"/""/' atlas/ATLAS/CONFIG/src/atlconf_misc.c
 	$(SEDI) '/char  *[[:alpha:]]/s/\[[0-9]\{1,5\}\]/[100000]/g' \
 	    atlas/ATLAS/CONFIG/src/config.c \
 	    atlas/ATLAS/CONFIG/src/atlconf_misc.c
-	$(SEDI) 's/"WIN"/"IN"/' atlas/ATLAS/CONFIG/src/probe_OS.c
     ifeq "$(PLATFORM)" "w64"
-	$(SEDI) '/ATL_asmdecor/s/\(Mjoin(\)_/\1/' \
-	    atlas/ATLAS/CONFIG/include/atlas_asm.h \
-	    atlas/ATLAS/include/atlas_asm.h
-	$(SEDI) -e '/\([td] \(asm_probe\|do_vsum\|do_cpuid\)([^)]*)\);/{' \
-	    -e 's//\1 __attribute__((sysv_abi));/;}' \
-	    atlas/ATLAS/CONFIG/src/backend/probe_this_asm.c \
-	    atlas/ATLAS/CONFIG/src/backend/probe_[sd]vec.c \
+	$(SEDI) 's/-DATL_OS_/-DATL_USE64BITS &/' \
+	    atlas/ATLAS/CONFIG/src/probe_*.c
+	$(SEDI) -e '/\(int\|void\) \(asm_probe\|do_vsum\|do_cpuid\)/{' \
+	    -e 's//\1 __attribute__((__sysv_abi__)) \2/;}' \
+	    atlas/ATLAS/CONFIG/src/backend/probe_*.c \
 	    atlas/ATLAS/CONFIG/src/backend/archinfo_x86.c
+	$(SEDI) -e 's/\(asmb *=\).*/\1 0;/' \
+	    atlas/ATLAS/CONFIG/src/SpewMakeInc.c
     endif
 	$(SEDI) 's:(F77).*backend/[^ ]*F\.f:& $(FLOADFLAGS):' \
 	    atlas/ATLAS/CONFIG/src/Makefile
-	$(SEDI) "s/\\(|| ln\\[i\\] *== *'\\\\\\)n'/&\\1r'/" \
-	    atlas/ATLAS/tune/sysinfo/emit_buildinfo.c
 	$(SEDI) -e 's:`echo "\$$arg" | sed -e "s/\(--[^/]*\)//"`:$${arg#\1}:' \
 	    -e 's:`echo "\$$arg" | sed -e "s/\^* +\$$*//"`:$$arg:' \
 	    atlas/ATLAS/configure
@@ -316,13 +313,18 @@ atlas/.configured: atlas/.patched
 	    -C xc $(XCC)   -Fa xc '$(XCFLAGS)' \
 	     --cc=$(XCC) --cflags='$(XCFLAGS)' \
 	    --prefix=../install
-	$(SEDI) '/FLAGS *=/s/-O[1 ]/-O2 /' atlas/build/Make.inc
+	$(SEDI) '/^ *SHELL *=/d;/FLAGS *=/s/-O[1 ]/-O2 /' \
+	    atlas/build/Make.inc
 	{ echo; echo 'ARCHIVER=$(AR)'; echo 'RANLIB=$(RANLIB)'; } \
 	    >>atlas/build/Make.inc
 	touch $@
 
 atlas/.built: atlas/.configured
 	make -C atlas/build build install
+	touch $@
+
+atlas/.checked: atlas/.built
+	make -C atlas/build check
 	touch $@
 
 # Combine ATLAS and LAPACK into one library. ATLAS configure can do this as well
@@ -372,6 +374,7 @@ lapack/.built: lapack/.configured
 	make -C lapack lapacklib
 	touch $@
 
+
 include/cblas.h include/clapack.h: atlas/.built | include
 	cp atlas/install/include/$(notdir $@) $@
 
@@ -398,7 +401,7 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.8
+VERSION=0.3.9
 
 SOURCES=qml.c
 INCLUDES=include/k.h include/cblas.h include/clapack.h
@@ -432,6 +435,8 @@ $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)
 .PHONY: test
 test: all
 	q test.q -s 16
+
+check: atlas/.checked test
 
 
 #
