@@ -332,7 +332,7 @@ atlas/.checked: atlas/.built
 # liblapack.a and libf77blas.a ensures that ATLAS routines replace LAPACK
 # routines regardless of which library they are in (e.g. LSAME).
 
-atlas/.combined: lapack/.built atlas/.built
+atlas/.combined: atlas/.built lapack/.built
 	mkdir -p atlas/combine
 	cp lapack/lapack_LINUX.a atlas/combine/alapack.a
 	cd atlas/combine $(foreach lib,atlas cblas f77blas lapack, \
@@ -401,15 +401,16 @@ lib/conmax.a: conmax/conmax.a | lib
 # Build QML
 #
 
-VERSION=0.3.9
+VERSION=0.3.10
 
 SOURCES=qml.c
-INCLUDES=include/k.h include/cblas.h include/clapack.h
+INCLUDES=include/k.h
 LIBS=
 ifeq "$(PLATFORMCLASS)" "w"
     LIBS+= lib/q.a
 endif
-LIBS+= lib/cephes.a lib/alapack.a lib/conmax.a
+LIBS+= lib/cephes.a $(LAPACKLIBS) lib/conmax.a
+LAPACKLIBS=lib/alapack.a
 
 build/qml.symlist: qml.c
 	mkdir -p build
@@ -425,7 +426,7 @@ build/qml.$(DLLEXT): $(SOURCES) $(INCLUDES) $(LIBS) \
 	mkdir -p build
 	cd build && $(call ccdll,qml, \
 	    $(addprefix ../,$(SOURCES)), \
-	    $(addprefix ../,$(LIBS)), \
+	    $(patsubst lib/%,../lib/%,$(LIBS)), \
 	    -I../include -DQML_VERSION=$(VERSION))
 
 $(PLATFORM)/qml.$(DLLEXT): build/qml.$(DLLEXT)

@@ -11,3 +11,42 @@
  
        my_ger(M-j-1, N-j-1, none, Ac+((j+1)SHIFT), 1, Ac+((j+lda)SHIFT), lda,
               Ac+((lda+j+1)SHIFT), lda);
+
+--- ATLAS/src/lapack/ATL_larft.c
++++ ATLAS/src/lapack/ATL_larft.c
+@@ -728,7 +727,5 @@
+    if (DIRECT != LAForward || STOREV != LAColumnStore) /* If not my specialty */
+    {
+-      fprintf(stderr, "ATL_dlarft called with DIRECT=%d, STOREV=%d.\n"
+-                     "Aborting.\n", DIRECT, STOREV);
+-      exit(1);
++      abort();
+    }
+ 
+@@ -842,7 +839,5 @@
+    if (DIRECT != LABackward || STOREV != LAColumnStore) /* If not my specialty*/
+    {
+-      fprintf(stderr, "ATL_dlarft called with DIRECT=%d, STOREV=%d.\n"
+-                     "Aborting.\n", DIRECT, STOREV);
+-      exit(1);
++      abort();
+    }
+ 
+@@ -958,7 +953,5 @@
+    if (DIRECT != LAForward || STOREV != LARowStore)   /* If not my specialty, */
+    {
+-      fprintf(stderr, "ATL_dlarft called with DIRECT=%d, STOREV=%d.\n"
+-                     "Aborting.\n", DIRECT, STOREV);
+-      exit(1);
++      abort();
+    }
+ 
+@@ -1076,7 +1069,5 @@
+    if (DIRECT != LABackward || STOREV != LARowStore)  /* If not my specialty, */
+    {
+-      fprintf(stderr, "ATL_dlarft called with DIRECT=%d, STOREV=%d.\n"
+-                     "Aborting.\n", DIRECT, STOREV);
+-      exit(1);
++      abort();
+    }
+ 

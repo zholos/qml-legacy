@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <clapack.h>
-
 #include <k.h>
 
 #ifdef _WIN32
@@ -570,13 +568,29 @@ take_opt(K x, const struct opt* opt, union optv* v) {
 // Matrix functions
 //
 
+// Fortran BLAS prototypes
+int dgemv_(char* trans, int* m, int* n,
+           double* alpha, double* a, int* lda,
+           double* x, int* incx, double* beta, double* y, int* incy);
+int dgemm_(char* transa, char* transb, int* m, int* n, int* k,
+           double* alpha, double* a, int* lda,
+           double* b, int* ldb, double* beta, double* c, int* ldc);
+int dtrsv_(char* uplo, char* trans, char* diag, int* n,
+           double* a, int* lda, double* x, int* incx);
+int dtrsm_(char* side, char* uplo, char* transa, char* diag, int* m, int* n,
+           double* alpha, double* a, int* lda, double* b, int* ldb);
+
 // Fortran LAPACK prototypes
+int dgetrf_(int* m, int* n, double* a, int* lda, int* ipiv, int* info);
+int dgetri_(int* n, double* a, int* lda, int* ipiv,
+            double* work, int* lwork, int* info);
 int dgeqrf_(int* m, int* n, double* a, int* lda,
             double* tau, double* work, int* lwork, int* info);
 int dgeqp3_(int* m, int* n, double* a, int* lda, int* jpvt,
             double* tau, double* work, int* lwork, int* info);
 int dorgqr_(int* m, int* n, int* k, double* a, int* lda,
             double* tau, double* work, int* lwork, int* info);
+int dpotrf_(char* uplo, int* n, double* a, int* lda, int* info);
 int dgesdd_(char* jobz, int* m, int* n, double* a, int* lda,
             double* s, double* u, int* ldu, double* vt, int* ldvt,
             double* work, int* lwork, int* iwork, int* info);
@@ -610,12 +624,16 @@ xerbla_() {
     abort();
 }
 
-// Error handler for the C BLAS interface, which is presumably only invoked if
-// we specify invalid parameters, or when malloc() fails.
+// Error handlers for the C BLAS interface, which are presumably only invoked if
+// we specify invalid parameters.
+void
+ATL_xerbla(int p, char* rout, char* form, ...) {
+    abort();
+}
+
 void
 cblas_xerbla(int p, char* rout, char* form, ...) {
-    if (p != 7)
-        abort();
+    abort();
 }
 
 // This should only be called before a logic error happens, but we quiet it to
@@ -779,7 +797,7 @@ complex:;
 K DLL_EXPORT
 qml_mdet(K x) {
     int triangular;
-    I n;
+    I n, info;
     F *a, r = 1;
 
     bubble_error(take_square_matrix(x, &a, &n, &triangular),                  );
@@ -787,12 +805,12 @@ qml_mdet(K x) {
     if (!triangular) {
         I* ipiv;
         alloc(ipiv, n,                                                 free(a));
-        I info = clapack_dgetrf(CblasColMajor, n, n, a, n, ipiv);
+        dgetrf_(&n, &n, a, &n, ipiv, &info);
         check_lapack_return(info,                          free(ipiv); free(a));
         check(!info, kf(0),                                free(ipiv); free(a));
 
         repeat (i, n)
-            if (ipiv[i] != i)
+            if (ipiv[i]-1 != i)
                 r = -r;
         /*                                              */ free(ipiv);
     }
@@ -807,21 +825,28 @@ qml_mdet(K x) {
 // Matrix inverse
 K DLL_EXPORT
 qml_minv(K x) {
-    I n, info, *ipiv;
-    F *a;
+    I n, info, lwork, *ipiv;
+    F *a, *w, maxwork;
 
     bubble_error(take_square_matrix(x, &a, &n, NULL),                         );
     alloc(ipiv, n,                                                     free(a));
 
-    info = clapack_dgetrf(CblasColMajor, n, n, a, n, ipiv);
-    check_lapack_return(info,                              free(ipiv); free(a));
-    if (info)
-        goto done;
-
-    info = clapack_dgetri(CblasColMajor, n, a, n, ipiv);
+    dgetrf_(&n, &n, a, &n, ipiv, &info);
     check_lapack_return(info,                              free(ipiv); free(a));
 
-done:
+    if (!info) {
+        lwork = -1;
+        dgetri_(&n, NULL, &n, NULL, &maxwork, &lwork, &info);
+        check_lapack_return(info,                          free(ipiv); free(a));
+
+        lwork = take_maxwork(maxwork);
+        alloc(w, lwork,                                    free(ipiv); free(a));
+
+        dgetri_(&n, a, &n, ipiv, w, &lwork, &info);
+        /*                                     */ free(w);
+        check_lapack_return(info,                          free(ipiv); free(a));
+    }
+
     /*                                                  */ free(ipiv);
     x = make_matrix(info ? NULL : a, n, n, n, 0);
     /*                                                              */ free(a);
@@ -835,6 +860,8 @@ qml_mm(K x, K y) {
     int b_column;
     I a_m, a_n, b_m, b_n;
     F *a, *b, *r;
+    int i_1 = 1;
+    double f_0 = 0, f_1 = 1;
 
     bubble_error(take_matrix(x, &a, &a_m, &a_m, &a_n, NULL),                  );
     bubble_error(take_matrix(y, &b, &b_m, &b_m, &b_n, &b_column),      free(a));
@@ -842,14 +869,12 @@ qml_mm(K x, K y) {
     alloc(r, add_size(0, a_m, b_n),                           free(b); free(a));
 
     if (b_n == 1)
-        cblas_dgemv(CblasColMajor, CblasNoTrans,
-                    a_m, a_n, 1, a, a_m, b, 1, 0, r, 1);
+        dgemv_("N", &a_m, &a_n, &f_1, a, &a_m, b, &i_1, &f_0, r, &i_1);
     else if (a_m == 1)
-        cblas_dgemv(CblasColMajor, CblasTrans,
-                    b_m, b_n, 1, b, b_m, a, 1, 0, r, 1);
+        dgemv_("T", &b_m, &b_n, &f_1, b, &b_m, a, &i_1, &f_0, r, &i_1);
     else
-        cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans,
-                    a_m, b_n, a_n, 1, a, a_m, b, b_m, 0, r, a_m);
+        dgemm_("N", "N", &a_m, &b_n, &a_n,
+               &f_1, a, &a_m, b, &b_m, &f_0, r, &a_m);
 
     /*                                                     */ free(b); free(a);
     x = make_matrix(r, a_m, a_m, b_n, b_column);
@@ -864,6 +889,8 @@ qml_ms(K x, K y) {
     int a_triangular, b_column;
     I a_n, b_m, b_n, info;
     F *a, *b;
+    int i_1 = 1;
+    double f_1 = 1;
 
     bubble_error(take_square_matrix(x, &a, &a_n, &a_triangular),              );
     check(a_triangular, krr(ss("domain")),                             free(a));
@@ -875,13 +902,10 @@ qml_ms(K x, K y) {
             goto done;
 
     if (b_n == 1)
-        cblas_dtrsv(CblasColMajor,
-                    a_triangular > 0 ? CblasUpper : CblasLower,
-                    CblasNoTrans, CblasNonUnit, a_n, a, a_n, b, 1); 
+        dtrsv_(a_triangular > 0 ? "U" : "L", "N", "N", &a_n, a, &a_n, b, &i_1); 
     else
-        cblas_dtrsm(CblasColMajor, CblasLeft,
-                    a_triangular > 0 ? CblasUpper : CblasLower,
-                    CblasNoTrans, CblasNonUnit, b_m, b_n, 1, a, a_n, b, b_m);
+        dtrsm_("L", a_triangular > 0 ? "U" : "L", "N", "N",
+               &b_m, &b_n, &f_1, a, &a_n, b, &b_m);
 
 done:
     /*                                                              */ free(a);
@@ -946,12 +970,12 @@ qml_mevu(K x) {
 // Cholesky decomposition
 K DLL_EXPORT
 qml_mchol(K x) {
-    I n;
+    I n, info;
     F* a;
 
     bubble_error(take_square_matrix(x, &a, &n, NULL),                         );
 
-    I info = clapack_dpotrf(CblasColMajor, CblasUpper, n, a, n);
+    dpotrf_("U", &n, a, &n, &info);
     check_lapack_return(info,                                          free(a));
 
     x = make_upper_matrix(info ? NULL : a, n, n, n);
@@ -1024,7 +1048,7 @@ qml_mqrp(K x) {
 // LUP factorization
 K DLL_EXPORT
 qml_mlup(K x) {
-    I m, n, min, *ipiv;
+    I m, n, min, info, *ipiv;
     F* a;
 
     bubble_error(take_matrix(x, &a, &m, &m, &n, NULL),                        );
@@ -1032,7 +1056,7 @@ qml_mlup(K x) {
     min = min_i(m, n);
     alloc(ipiv, min,                                                   free(a));
 
-    I info = clapack_dgetrf(CblasColMajor, m, n, a, m, ipiv);
+    dgetrf_(&m, &n, a, &m, ipiv, &info);
     check_lapack_return(info,                              free(ipiv); free(a));
 
     x = ktn(0, 3);
@@ -1047,7 +1071,7 @@ qml_mlup(K x) {
     repeat (i, m)
         q[i] = i;
     repeat (i, min)
-        swap_i(q + i, q + ipiv[i]);
+        swap_i(q + i, q + ipiv[i]-1);
 
     /*                                                  */ free(ipiv); free(a);
     return x;

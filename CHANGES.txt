@@ -1,3 +1,7 @@
+Version 0.3.10 on 2011-07-13:
+  * Replaced ATLAS-specific calls with Fortran interface calls in preparation
+    for allowing linking with external BLAS and LAPACK libraries.
+
 Version 0.3.9 on 2011-07-11:
   * Updated to ATLAS 3.9.46.
   * Added 'make check' target to run tests for individual libraries (ATLAS).

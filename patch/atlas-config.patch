@@ -134,3 +134,162 @@
  RunTyp: xemit_typ
 	$(ATLRUN) $(SYSdir) xemit_typ > $(INCAdir)/atlas_type.h
  
+
+--- ATLAS/makes/Make.r1tune
++++ ATLAS/makes/Make.r1tune
+@@ -100,11 +100,14 @@
+ 	cd $(BLDdir)/src/blas/reference/level2 ; make slib
+ 	cd $(GR1dir) ; make slib
+ 	$(MAKE) xss1nxtune
++	mkdir -p $(R1Tdir)/_include
+ 	$(ATLRUN) $(R1Tdir) xss1nxtune -U u -n 2000 -r 1 -s 10 -C 0 \
+-                  -o $(INCAdir)/atlas_ssyrNX.h
++                  -o _include/atlas_ssyrNX.h
++	cp $(R1Tdir)/_include/atlas_ssyrNX.h $(INCAdir)
+ 	$(MAKE) xss2nxtune
+ 	$(ATLRUN) $(R1Tdir) xss2nxtune -U u -n 2000 -r 1 -s 10 -C 0 \
+-                  -o $(INCAdir)/atlas_ssyr2NX.h
++                  -o _include/atlas_ssyr2NX.h
++	cp $(R1Tdir)/_include/atlas_ssyr2NX.h $(INCAdir)
+ 	cd $(L2Bdir) ; make slib
+ #
+ # This target is for directly timing a call to the kernel, w/o cache flushing
+@@ -349,11 +352,14 @@
+ 	cd $(BLDdir)/src/blas/reference/level2 ; make dlib
+ 	cd $(GR1dir) ; make dlib
+ 	$(MAKE) xds1nxtune
++	mkdir -p $(R1Tdir)/_include
+ 	$(ATLRUN) $(R1Tdir) xds1nxtune -U u -n 2000 -r 1 -s 10 -C 0 \
+-                  -o $(INCAdir)/atlas_dsyrNX.h
++                  -o _include/atlas_dsyrNX.h
++	cp $(R1Tdir)/_include/atlas_dsyrNX.h $(INCAdir)
+ 	$(MAKE) xds2nxtune
+ 	$(ATLRUN) $(R1Tdir) xds2nxtune -U u -n 2000 -r 1 -s 10 -C 0 \
+-                  -o $(INCAdir)/atlas_dsyr2NX.h
++                  -o _include/atlas_dsyr2NX.h
++	cp $(R1Tdir)/_include/atlas_dsyr2NX.h $(INCAdir)
+ 	cd $(L2Bdir) ; make dlib
+ #
+ # This target is for directly timing a call to the kernel, w/o cache flushing
+
+--- ATLAS/makes/Make.r1tune
++++ ATLAS/makes/Make.r1tune
+@@ -150,5 +150,5 @@
+ sr2time : sr2time.o xr2hgen
+ 	rm -f $(sr2obj) ATL_sger2.c atlas_sr2.h r2h.bak
+-	- mv $(INCAdir)/atlas_sr2.h rr2.bak
++	- mv $(INCAdir)/atlas_sr2.h r2h.bak
+ 	./xr2hgen -p s -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag)
+ 	cp -f $(R2Kdir)/$(r2rout) ATL_sger2k.c
+@@ -402,5 +402,5 @@
+ dr2time : dr2time.o xr2hgen
+ 	rm -f $(dr2obj) ATL_dger2.c atlas_dr2.h r2h.bak
+-	- mv $(INCAdir)/atlas_dr2.h rr2.bak
++	- mv $(INCAdir)/atlas_dr2.h r2h.bak
+ 	./xr2hgen -p d -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag)
+ 	cp -f $(R2Kdir)/$(r2rout) ATL_dger2k.c
+@@ -659,5 +659,5 @@
+ cr2time : cr2time.o xr2hgen
+ 	rm -f $(cr2obj) ATL_cger2.c atlas_cr2.h r2h.bak
+-	- mv $(INCAdir)/atlas_cr2.h rr2.bak
++	- mv $(INCAdir)/atlas_cr2.h r2h.bak
+ 	./xr2hgen -p c -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag)
+ 	cp -f $(R2Kdir)/$(r2rout) ATL_cger2k.c
+@@ -934,5 +934,5 @@
+ zr2time : zr2time.o xr2hgen
+ 	rm -f $(zr2obj) ATL_zger2.c atlas_zr2.h r2h.bak
+-	- mv $(INCAdir)/atlas_zr2.h rr2.bak
++	- mv $(INCAdir)/atlas_zr2.h r2h.bak
+ 	./xr2hgen -p z -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag)
+ 	cp -f $(R2Kdir)/$(r2rout) ATL_zger2k.c
+
+--- ATLAS/makes/Make.mvtune
++++ ATLAS/makes/Make.mvtune
+@@ -155,5 +155,5 @@
+ smvntime : smvntime.o xmvnhgen
+ 	- rm -f $(smvntobj) ATL_smvnk.c atlas_smvn.h mvnh.bak ATL_sgemvN.o
+-	- mv $(INCAdir)/atlas_smvn.h rmvn.bak
++	- mv $(INCAdir)/atlas_smvn.h mvnh.bak
+ 	./xmvnhgen -p s -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag) $(ntlb)
+ 	cp -f $(MVNKdir)/$(mvnrout) ATL_smvnk.c
+@@ -444,5 +444,5 @@
+ dmvntime : dmvntime.o xmvnhgen
+ 	- rm -f $(dmvntobj) ATL_dmvnk.c atlas_dmvn.h mvnh.bak ATL_dgemvN.o
+-	- mv $(INCAdir)/atlas_dmvn.h rmvn.bak
++	- mv $(INCAdir)/atlas_dmvn.h mvnh.bak
+ 	./xmvnhgen -p d -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag) $(ntlb)
+ 	cp -f $(MVNKdir)/$(mvnrout) ATL_dmvnk.c
+@@ -745,5 +745,5 @@
+ cmvntime : cmvntime.o xmvnhgen
+ 	- rm -f $(cmvntobj) ATL_cmvnk.c atlas_cmvn.h mvnh.bak ATL_cgemvN.o
+-	- mv $(INCAdir)/atlas_cmvn.h rmvn.bak
++	- mv $(INCAdir)/atlas_cmvn.h mvnh.bak
+ 	./xmvnhgen -p c -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag) $(ntlb)
+ 	cp -f $(MVNKdir)/$(mvnrout) ATL_cmvnk.c
+@@ -1076,5 +1076,5 @@
+ zmvntime : zmvntime.o xmvnhgen
+ 	- rm -f $(zmvntobj) ATL_zmvnk.c atlas_zmvn.h mvnh.bak ATL_zgemvN.o
+-	- mv $(INCAdir)/atlas_zmvn.h rmvn.bak
++	- mv $(INCAdir)/atlas_zmvn.h mvnh.bak
+ 	./xmvnhgen -p z -l $(l1mul) -m $(mu) -n $(nu) -f $(iflag) $(ntlb)
+ 	cp -f $(MVNKdir)/$(mvnrout) ATL_zmvnk.c
+
+--- ATLAS/makes/Make.mmtune
++++ ATLAS/makes/Make.mmtune
+@@ -288,7 +288,9 @@
+ res/snreg : xgmmsearch
+ 	./xgmmsearch -p s -r -1
+ sRun_tfc : stfc
++	mkdir -p $(MMTdir)/_include
+ 	$(ATLRUN) $(MMTdir) xstfc
++	cp $(MMTdir)/_include/sXover.h $(INCAdir)
+ 	cp -f $(INCAdir)/sXover.h res/.
+ 
+ stfc :
+@@ -378,7 +380,9 @@
+ res/dnreg : xgmmsearch
+ 	./xgmmsearch -p d -r -1
+ dRun_tfc : dtfc
++	mkdir -p $(MMTdir)/_include
+ 	$(ATLRUN) $(MMTdir) xdtfc
++	cp $(MMTdir)/_include/dXover.h $(INCAdir)
+ 	cp -f $(INCAdir)/dXover.h res/.
+ 
+ dtfc :
+@@ -465,7 +469,9 @@
+ res/qnreg : xgmmsearch
+ 	./xgmmsearch -p q -r -1
+ qRun_tfc : qtfc
++	mkdir -p $(MMTdir)/_include
+ 	$(ATLRUN) $(MMTdir) xqtfc
++	cp $(MMTdir)/_include/qXover.h $(INCAdir)
+ 	cp -f $(INCAdir)/qXover.h res/.
+ 
+ qtfc :
+@@ -552,7 +558,9 @@
+ res/cnreg : xgmmsearch
+ 	./xgmmsearch -p c -r -1
+ cRun_tfc : ctfc
++	mkdir -p $(MMTdir)/_include
+ 	$(ATLRUN) $(MMTdir) xctfc
++	cp $(MMTdir)/_include/cXover.h $(INCAdir)
+ 	cp -f $(INCAdir)/cXover.h res/.
+ 
+ ctfc :
+@@ -639,7 +647,9 @@
+ res/znreg : xgmmsearch
+ 	./xgmmsearch -p z -r -1
+ zRun_tfc : ztfc
++	mkdir -p $(MMTdir)/_include
+ 	$(ATLRUN) $(MMTdir) xztfc
++	cp $(MMTdir)/_include/zXover.h $(INCAdir)
+ 	cp -f $(INCAdir)/zXover.h res/.
+ 
+ ztfc :
+@@ -1553,5 +1563,5 @@
+ $(pre)tfc.o : $(mySRCdir)/tfc.c $(INCSdir)/atlas_misc.h $(INCAdir)/$(pre)mm.h \
+               $(INCAdir)/atlas_$(pre)sysinfo.h
+ 	$(ICC) -o $@ -c $(ICCFLAGS) -D$(typ) $(mySRCdir)/tfc.c \
+-                 -DSM_FOUT=$(INCAdir)/$(pre)Xover.h
++                 -DSM_FOUT=_include/$(pre)Xover.h
+ 
