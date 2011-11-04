@@ -31,7 +31,7 @@ numerical arguments and convert them into floating-point.  Matrixes are in
 row-major order, as usual.  Complex numbers are represented as pairs of the
 real and imaginary parts.  E.g.:
 
-    q).qml.ncdf .25 .5 .75                    / normal distribution quartiles
+    q).qml.nicdf .25 .5 .75                   / normal distribution quartiles
     -0.6744898 0 0.6744898
 
     q).qml.mchol (1 2 1;2 5 4;1 4 6)          / Cholesky factorization
